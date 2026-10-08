@@ -25,20 +25,27 @@ class MockProvider:
         user = next(m["content"] for m in reversed(messages) if m["role"] == "user")
         match = re.search(r"^Character name: (.{1,40})$", messages[0]["content"], re.MULTILINE)
         character_name = match.group(1) if match else "Nova"
+        english = "\nResponse language: en\n" in messages[0]["content"]
         if messages[-1]["role"] == "tool":
             observation = json.loads(messages[-1]["content"])
-            if "memories" in observation:
+            if "error" in observation:
+                reply = ("The tool could not complete this action: " if english else "工具未完成这次动作：") + observation["error"]
+            elif "answer" in observation:
+                reply = observation["answer"]
+            elif "memories" in observation:
                 items = observation["memories"]
-                reply = "你确认保存的记忆是：" + "；".join(x["content"] for x in items) if items else "你还没有确认保存的记忆，我们可以从你愿意告诉我的事开始。"
+                reply = (("Your approved memories: " if english else "你确认保存的记忆是：") + "; ".join(x["content"] for x in items)) if items else ("You have no approved memories yet." if english else "你还没有确认保存的记忆，我们可以从你愿意告诉我的事开始。")
             elif "needs_confirmation" in observation:
-                reply = "我把它放在了待确认区。请在记忆面板确认后，它才会成为可检索的长期记忆。"
+                reply = "This proposal is transient. Confirm it in Memory before it becomes retrievable long-term memory." if english else "这条建议暂存在待确认区。请在记忆面板确认后，它才会成为可检索的长期记忆。"
             elif "turn_count" in observation:
-                reply = f"当前会话已有 {observation['turn_count']} 轮完成的对话；这是本地记录的统计，不是对情绪的诊断。"
+                reply = f"This session has {observation['turn_count']} completed turns. These are local counts, not an emotional diagnosis." if english else f"当前会话已有 {observation['turn_count']} 轮完成的对话；这是本地记录的统计，不是对情绪的诊断。"
             else:
-                reply = "先别急着解决所有问题。" + observation.get("prompt", "你愿意说说最困扰你的那一件事吗？")
+                reply = "There is no need to solve everything at once. Would you like to tell me what feels hardest right now?" if english else "先别急着解决所有问题。" + observation.get("prompt", "你愿意说说最困扰你的那一件事吗？")
             return Completion(content=reply)
         if user.startswith("记住：") or user.lower().startswith("remember:"):
             call = {"name": "propose_memory", "arguments": {"content": user.split(":" if ":" in user else "：", 1)[1].strip()}}
+        elif any(x in user.lower() for x in ["合成", "synthetic", "demo data"]):
+            call = {"name": "analyze_demo_data", "arguments": {"question": user}}
         elif any(x in user.lower() for x in ["记忆", "记得", "remember", "memory"]):
             call = {"name": "read_memories", "arguments": {}}
         elif any(x in user.lower() for x in ["统计", "数据", "stats"]):
@@ -46,10 +53,12 @@ class MockProvider:
         elif any(x in user.lower() for x in ["压力", "焦虑", "累", "stressed", "tired"]):
             call = {"name": "grounding_question", "arguments": {}}
         else:
-            if any(x in user for x in ["开心", "成功", "高兴"]):
-                return Completion(content="听起来是值得开心的一刻！你最想把哪个瞬间留下来？")
-            if any(x in user for x in ["孤独", "难过"]):
-                return Completion(content="听起来你现在有些难受。你愿意让我先听你说，还是一起找一个小小的下一步？")
+            if any(x in user.lower() for x in ["开心", "成功", "高兴", "happy", "excited"]):
+                return Completion(content="That sounds like a happy moment. Which part would you like to share?" if english else "听起来是值得开心的一刻！你最想把哪个瞬间留下来？")
+            if any(x in user.lower() for x in ["孤独", "难过", "lonely", "sad"]):
+                return Completion(content="That sounds difficult. Would you prefer that I listen, or help you think of a small next step?" if english else "听起来你现在有些难受。你愿意让我先听你说，还是一起找一个小小的下一步？")
+            if english:
+                return Completion(content=f"I am {character_name}, an AI companion. This is a fixed mock reply; genuine multi-turn responses require a model API. What happened in your day?")
             return Completion(content=f"我是 {character_name}，一个 AI 陪伴角色。这个模式使用固定演示回复；接入模型后才会生成真正的多轮对话。你想从今天发生的一件事聊起吗？")
         return Completion(calls=[{"id": "mock-call", **call}])
 
@@ -83,8 +92,18 @@ class CompatibleProvider:
                 response.raise_for_status()
                 data = response.json()
             message = data["choices"][0]["message"]
+            if not isinstance(message, dict):
+                raise ValueError("Completion message must be an object")
+            if not isinstance(message.get("content") or "", str) or not isinstance(data.get("usage", {}), dict):
+                raise ValueError("Invalid completion fields")
             calls = []
             for c in message.get("tool_calls", []):
+                if not isinstance(c["id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", c["id"]):
+                    raise ValueError("Invalid tool call ID")
+                if not isinstance(c["function"]["name"], str) or not re.fullmatch(r"[a-zA-Z0-9_]{1,64}", c["function"]["name"]):
+                    raise ValueError("Invalid tool name")
+                if not isinstance(c["function"]["arguments"], str) or len(c["function"]["arguments"]) > 4096:
+                    raise ValueError("Oversized tool arguments")
                 args = json.loads(c["function"]["arguments"])
                 if not isinstance(args, dict):
                     raise ValueError("Arguments must be objects")

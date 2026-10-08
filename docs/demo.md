@@ -6,8 +6,12 @@
 4. Send `记住：我喜欢海边散步`. A pending memory appears; it is not approved yet.
 5. Ask `你还记得我吗？` before approval; the mock recall tool returns no approved memory.
 6. Approve the pending memory, ask again, and see the stored fact.
-7. Open session insights or ask `看看会话统计`; the tool returns local aggregates.
-8. Clear history and confirm approved memory persists. Delete the entire session to erase all application rows for it.
+7. Create a new conversation with the explicit “share approved memory” checkbox. Ask again and inspect the recalled fact. A default isolated conversation does not see it.
+8. Correct the approved memory using the Memory form; ask again, then delete the fact and verify recall no longer returns it. Corrections/deletions affect the shared space.
+9. Open DataAgent in personal settings, ask `合成数据的情绪分布是什么？`, and expand the plan, results, source fingerprint, and execution trace. These are synthetic fixture counts, not actual product outcomes.
+10. Switch the user interface to English, create an English conversation, and use `remember: I prefer quiet walks` / `what do you remember?`. Character descriptions and administration retain their original Chinese text.
+11. Clear history and confirm approved memory persists. Delete sessions: dialogue is removed immediately, shared approved facts survive only in retained shared conversations; deleting the last one removes the memory space.
+12. Run `scripts/evaluate.py` to view injected tool/provider failure, timeout, invalid-argument, and isolation scenarios. Failed runs return error traces and do not save half-turns. They are reproducible checks, not a UI switch for producing errors in a live service.
 
 Deleting one memory does not remove text that already appeared in earlier messages. Use full session deletion for that scope of erasure.
 

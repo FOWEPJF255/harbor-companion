@@ -13,8 +13,9 @@ flowchart LR
   Loop --> Provider[Mock or compatible model adapter]
   Loop --> Skills[Persona instructions]
   Loop --> Tools[Read memory / propose memory / grounding / aggregate data]
-  Tools --> DB[(SQLite)]
-  UI --> Consent[Approve or delete proposed memory]
+  Tools --> DB[(SQLite / approved memory spaces)]
+  Tools --> Synthetic[Read-only synthetic DataAgent fixture]
+  UI --> Consent[Approve / correct / delete / explicitly share]
   Consent --> DB
   Loop --> Evidence[Observable tool trace and provider metadata]
 ```
@@ -28,15 +29,15 @@ flowchart LR
 5. Request a completion; execute only registered tools with validated arguments.
 6. Append tool observations and continue until a final reply or a budget failure.
 7. Apply illustrative identity/dependency output checks.
-8. Atomically persist both messages, result metadata, and pending proposals.
+8. Atomically persist both messages and safe result metadata. Keep pending structured proposals in expiring process memory.
 
 There is no automatic fallback from a real provider to mock. A failed turn does not create a successful response or partially saved message pair. Pending memory proposals are not persisted if the run fails.
 
 ## Memory
 
-Memory is scoped to a single local session. It persists across browser refresh and can remain after clearing conversation history. It is not a multi-device account-memory system.
+History and unapproved suggestions remain session-private. Approved memory belongs to a space that is isolated by default and can be explicitly shared when creating a new conversation. It is not a multi-device account-memory system.
 
-`propose_memory` returns a pending proposal. Only the explicit approval endpoint, or a direct user-written memory form, makes content available to the recall tool. Removing a memory does not erase earlier chat messages that mention the same fact; deleting the whole session clears messages, turns, and memories together.
+`propose_memory` returns a transient proposal with a 30-minute process-local lifetime. Only explicit approval or a direct user-written save makes it durable and retrievable. User corrections increment a revision. Removing a memory does not erase earlier chat mentions. Deleting a session clears its dialogue; approved memory survives only while another retained session shares its space. See [memory lifecycle](memory.md).
 
 The original message can still be present in recent conversation context before memory approval. Consent controls long-term memory retrieval, not whether the model can read a message the user just sent.
 
@@ -52,16 +53,17 @@ The backend retains a local default. Exact remote host/origin configuration requ
 
 ## Model and tools
 
-The loop follows an action/observation pattern commonly used in ReAct-style systems, without asking for or logging hidden chain of thought. Tool traces contain names and statuses, not model reasoning or arbitrary shell commands.
+The loop follows an action/observation pattern commonly used in ReAct-style systems, without asking for or logging hidden chain of thought. Tool traces show names, validated inputs, observations, status, and duration. Proposal content uses a consent placeholder. Whole-run failures return an explicit reason and trace without a fake reply or half-turn. Per-tool timeouts yield a visible error observation; synchronous work is bounded and read-only, but a Python thread is not forcefully cancelled.
 
 Registered tools:
 
 | Tool | Permission | Effect |
 |---|---|---|
-| `read_memories` | Session-scoped read | Approved memories only |
+| `read_memories` | Explicit memory-space read | Approved memories only |
 | `propose_memory` | Proposal only | Requires user approval |
 | `grounding_question` | Static resource | Optional nonclinical prompt |
 | `session_insights` | Read-only aggregate | Counts and descriptive latency |
+| `analyze_demo_data` | Fixed synthetic dataset only | Natural-language plan selection and actual aggregation; query/result provenance |
 
 There are no filesystem, browser, social-account, payment, or messaging tools. Models cannot supply a different session ID or arbitrary SQL through tool arguments.
 
@@ -74,4 +76,4 @@ There are no filesystem, browser, social-account, payment, or messaging tools. M
 - UI modes and persona prompts cannot prove relational safety or semantic correctness.
 - The single-process SQLite/async-lock design is not a distributed architecture.
 - Context is truncated, not summarized; information beyond the bounded history can be lost.
-- Streaming/SSE, tool cancellation, authenticated hosting, and semantic memory updates are follow-up work.
+- Streaming/SSE, forceful tool cancellation, production user authentication/hosting, and semantic conflict merging remain outside the current offline milestone.

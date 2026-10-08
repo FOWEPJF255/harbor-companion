@@ -25,10 +25,10 @@ The chat is the primary product surface. Engineering traces are optional and kep
 | Memory | Pending proposals, approval, recall, deletion | Long-conversation conflict/update evaluation |
 | ReAct/Harness | Bounded model-action-tool-observation loop | Live tool-call behavior and failure transcripts |
 | Skills | Editable persona and grounding resource | Skill selection/versioning as future needs justify |
-| DataAgent-style work | Read-only local aggregate tool and insights UI | Richer approved datasets and measured quality changes |
+| DataAgent work | Natural-language whitelist-plan selection and actual synthetic aggregation, visible query/result trace | Real-model planning evaluation, approved datasets, measured quality changes |
 | Engineering deployment | Localhost server, locked frontend deps, CI | Authenticated remote demo and runtime monitoring |
 
-The local analytics tool is a small engineering foothold. It is not evidence of production data mining or arbitrary SQL-agent deployment. Mock fixtures are infrastructure checks, not companion-quality scores.
+The DataAgent executes bounded analyses on a fixed labeled synthetic fixture. Its planner is deterministic and its arithmetic is real; it does not establish LLM planning quality, production data mining, or arbitrary SQL-agent deployment. Mock fixtures are infrastructure checks, not companion-quality scores.
 
 ## Interview narrative after this milestone
 

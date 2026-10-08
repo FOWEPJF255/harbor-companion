@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { api, clearConnection, getConnection, getSessionKey, setConnection } from './api'
-import { AppInstall, registerAppShell } from './AppInstall'
+import { api, ApiError, clearConnection, getConnection, getSessionKey, setConnection } from './api'
+import { AppInstall, isNativeApp, registerAppShell } from './AppInstall'
+import { analysisQuestions, readLanguage, starters, storeLanguage, translator, type Language, type TextKey } from './i18n'
 import './style.css'
 
 type Memory = {id: string; content: string; status: 'pending' | 'approved'}
@@ -11,14 +12,13 @@ type Session = {id: string; mode: string; character_id: string; character_name: 
 type SessionSummary = {id: string; character_name: string; mode: string; created: string; turn_count: number; last_active: string}
 type Character = {id: string; name: string; tagline: string; description: string; greeting: string; accent_color: string; avatar_style: string; revision: number}
 type Status = {provider: string; configured: boolean; model: string | null}
-type Trace = {type: string; name: string; status: string; step?: number}
+type Trace = {type?: string; name?: string; status?: string; step?: number; input?: unknown; observation?: unknown; [key: string]: unknown}
 type Run = {reply: string; provider: string; trace: Trace[]; latency_ms: number; emotion: string}
-type Tab = 'characters' | 'chat' | 'memory' | 'me'
+type Analysis = {answer: string; plan: unknown; result: unknown; trace: Trace[]; source: unknown; scope: unknown}
+type Tab = 'characters' | 'chat' | 'memory' | 'me' | 'data'
 
 const fallbackCharacter: Character = {id: 'nova', name: 'Nova', tagline: '陪你停靠片刻', description: '先听你说，再一起找一个小小的下一步。', greeting: '你好，我是 Nova。你愿意说说今天最在意的一件事吗？', accent_color: '#b9d8c7', avatar_style: 'nova', revision: 1}
-const moodNames: Record<string, string> = {calm: '平静', bright: '轻快', low: '低落', overwhelmed: '压力'}
-const modeNames: Record<string, string> = {friend: '朋友陪伴', gentle_romance: '温柔关系'}
-const tabItems: {id: Tab; icon: string; label: string}[] = [{id: 'characters', icon: '✦', label: '角色'}, {id: 'chat', icon: '◌', label: '聊天'}, {id: 'memory', icon: '◇', label: '记忆'}, {id: 'me', icon: '☷', label: '我的'}]
+const tabItems: {id: Tab; icon: string; label: TextKey}[] = [{id: 'characters', icon: '✦', label: 'characters'}, {id: 'chat', icon: '◌', label: 'chat'}, {id: 'memory', icon: '◇', label: 'memory'}, {id: 'me', icon: '☷', label: 'me'}]
 
 function readKnownSessions(): string[] {
   try {
@@ -36,18 +36,27 @@ function persistKnownSessions(ids: string[]) {
   return bounded
 }
 
-function shortDate(value: string) {
+function shortDate(value: string, language: Language) {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '本设备会话' : date.toLocaleString('zh-CN', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})
+  return Number.isNaN(date.getTime()) ? translator(language)('savedOnDevice') : date.toLocaleString(language === 'en' ? 'en-US' : 'zh-CN', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})
 }
 
-function Portrait({character = fallbackCharacter, mood = 'calm', small = false}: {character?: Character; mood?: string; small?: boolean}) {
+function JsonValue({value}: {value: unknown}) {
+  return <pre className="observable-json">{typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)}</pre>
+}
+
+function TraceList({items, language}: {items: Trace[]; language: Language}) {
+  const t = translator(language)
+  return <div className="observable-trace">{items.map((item, index) => <details className="trace-step" key={index}><summary><span>{String(index + 1).padStart(2, '0')}</span><code>{String(item.name || item.operation || item.type || 'step')}</code><b>{item.status || '—'}</b></summary><h4>{t('traceRecord')}</h4><JsonValue value={item}/></details>)}</div>
+}
+
+function Portrait({character = fallbackCharacter, mood = 'calm', small = false, language = 'zh'}: {character?: Character; mood?: string; small?: boolean; language?: Language}) {
   const gradientId = `hair-${useId().replace(/:/g, '')}`
   const variant = ({nova: 0, sage: 2, ember: 1} as Record<string, number>)[character.avatar_style] ?? 0
   const palettes = [{hair: '#253f5a', shadow: '#10283f', coat: '#89b7ac', pin: '#f5d29a'}, {hair: '#574451', shadow: '#362c43', coat: '#b49fae', pin: '#f2c9c1'}, {hair: '#465044', shadow: '#2a352d', coat: '#b9b088', pin: '#d8ddb1'}]
   const palette = palettes[variant]
   return <div className={`portrait ${small ? 'small' : ''} portrait-${variant}`} data-mood={mood}>
-    <svg viewBox="0 0 280 320" role="img" aria-label={`${character.name} 的原创二维角色头像`}>
+    <svg viewBox="0 0 280 320" role="img" aria-label={translator(language)('portraitLabel', {name: character.name})}>
       <defs><linearGradient id={gradientId} x2="1" y2="1"><stop stopColor={palette.hair}/><stop offset="1" stopColor={palette.shadow}/></linearGradient></defs>
       <circle cx="140" cy="148" r="118" fill={character.accent_color} opacity=".15"/>
       <path d="M64 259 Q46 86 107 59 Q179 23 216 108 L219 260Z" fill={`url(#${gradientId})`}/>
@@ -68,6 +77,10 @@ function Portrait({character = fallbackCharacter, mood = 'calm', small = false}:
 }
 
 export function App() {
+  const [language, setLanguage] = useState<Language>(readLanguage)
+  const t = translator(language)
+  const modeNames: Record<string, string> = {friend: t('friend'), gentle_romance: t('romance')}
+  const moodNames: Record<string, string> = language === 'en' ? {calm: 'Calm', bright: 'Bright', low: 'Low', overwhelmed: 'Stress'} : {calm: '平静', bright: '轻快', low: '低落', overwhelmed: '压力'}
   const [status, setStatus] = useState<Status | null>(null)
   const [characters, setCharacters] = useState<Character[]>([])
   const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -81,21 +94,37 @@ export function App() {
   const [draft, setDraft] = useState('')
   const [pendingText, setPendingText] = useState('')
   const [memoryDraft, setMemoryDraft] = useState('')
+  const [reuseMemories, setReuseMemories] = useState(false)
+  const [editingMemory, setEditingMemory] = useState<string | null>(null)
+  const [correction, setCorrection] = useState('')
+  const [question, setQuestion] = useState('')
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [sending, setSending] = useState(false)
   const [lastRun, setLastRun] = useState<Run | null>(null)
+  const [failedTrace, setFailedTrace] = useState<Trace[]>([])
+  const [analysisFailure, setAnalysisFailure] = useState<Trace[]>([])
+  const [online, setOnline] = useState(navigator.onLine)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [restoring, setRestoring] = useState(true)
   const [connection, setConnectionDraft] = useState(getConnection)
   const [connectionNotice, setConnectionNotice] = useState('')
-  const retry = useRef<{sid: string; text: string; id: string} | null>(null)
+  const retry = useRef<{sid: string; text: string; id: string; language: Language} | null>(null)
   const knownIds = useRef<string[]>(readKnownSessions())
   const messagesEnd = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
   const connectionEpoch = useRef(0)
   const listRequest = useRef(0)
+
+  useEffect(() => {storeLanguage(language)}, [language])
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine)
+    window.addEventListener('online', sync); window.addEventListener('offline', sync)
+    return () => {window.removeEventListener('online', sync); window.removeEventListener('offline', sync)}
+  }, [])
 
   async function refreshSessions(ids = knownIds.current) {
     const epoch = connectionEpoch.current
@@ -116,7 +145,7 @@ export function App() {
     const sid = localStorage.getItem(getSessionKey('harbor-session'))
     const restore = sid ? api<Session>(`/sessions/${sid}`).then(value => {
       if (current()) {setSession(value); setSelectedCharacterId(value.character_id || 'nova'); setMode(value.mode); setTab('chat')}
-    }).catch(e => {if (current()) setError(`上次会话暂时未能恢复：${(e as Error).message}`)}) : Promise.resolve()
+    }).catch(e => {if (current()) setError(translator(readLanguage())('restoreError', {error: (e as Error).message}))}) : Promise.resolve()
     restore.finally(() => {if (current()) setRestoring(false)})
     refreshSessions().catch(() => {})
     return () => {cancelled = true}
@@ -149,14 +178,14 @@ export function App() {
 
   async function start() {
     if (!adult || busy || !characters.some(item => item.id === selectedCharacterId)) return
-    if (knownIds.current.length >= 20) {setError('本设备已保存 20 个会话入口。请先在“我的”删除不再需要的会话，再开启新对话。'); return}
+    if (knownIds.current.length >= 20) {setError(t('sessionLimit')); return}
     setBusy(true); setError('')
     try {
-      const created = await api<{id: string}>('/sessions', 'POST', {adult_confirmed: adult, mode, character_id: selectedCharacterId})
+      const created = await api<{id: string}>('/sessions', 'POST', {adult_confirmed: adult, mode, character_id: selectedCharacterId, language, ...(reuseMemories && session ? {memory_from_session_id: session.id} : {})})
       knownIds.current = persistKnownSessions([created.id, ...knownIds.current])
       localStorage.setItem(getSessionKey('harbor-session'), created.id)
       await refresh(created.id)
-      setDraft(''); setMemoryDraft(''); setLastRun(null); retry.current = null; setTab('chat')
+      setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false); setLastRun(null); setFailedTrace([]); retry.current = null; setTab('chat')
       refreshSessions().catch(() => {})
     } catch (e) {setError((e as Error).message)} finally {setBusy(false)}
   }
@@ -168,21 +197,21 @@ export function App() {
       const restored = await api<Session>(`/sessions/${sid}`)
       setSession(restored); setSelectedCharacterId(restored.character_id || 'nova'); setMode(restored.mode)
       localStorage.setItem(getSessionKey('harbor-session'), sid)
-      setDraft(''); setMemoryDraft(''); setLastRun(null); retry.current = null; setTab('chat')
+      setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false); setLastRun(null); setFailedTrace([]); retry.current = null; setTab('chat')
     } catch (e) {setError((e as Error).message)} finally {setBusy(false)}
   }
 
   async function send(text = draft) {
     if (!session || !text.trim() || busy) return
     const sid = session.id
-    setBusy(true); setSending(true); setError(''); setDraft(''); setPendingText(text)
-    const request = retry.current?.sid === sid && retry.current.text === text ? retry.current : {sid, text, id: crypto.randomUUID()}
+    setBusy(true); setSending(true); setError(''); setDraft(''); setPendingText(text); setLastRun(null); setFailedTrace([])
+    const request = retry.current?.sid === sid && retry.current.text === text ? retry.current : {sid, text, id: crypto.randomUUID(), language}
     retry.current = request
     try {
-      const result = await api<Run>(`/sessions/${sid}/chat`, 'POST', {message: text, request_id: request.id})
+      const result = await api<Run>(`/sessions/${sid}/chat`, 'POST', {message: text, request_id: request.id, language: request.language})
       setLastRun(result); await refresh(sid); retry.current = null
       refreshSessions().catch(() => {})
-    } catch (e) {setError((e as Error).message); setDraft(text)} finally {setBusy(false); setSending(false); setPendingText('')}
+    } catch (e) {setError((e as Error).message); setDraft(text); if (e instanceof ApiError && e.trace.length) setFailedTrace(e.trace as Trace[])} finally {setBusy(false); setSending(false); setPendingText('')}
   }
 
   async function memoryAction(mid: string, action: 'approve' | 'delete') {
@@ -197,12 +226,33 @@ export function App() {
     try {await api(`/sessions/${session.id}/memories`, 'POST', {content: memoryDraft.trim()}); setMemoryDraft(''); await refresh(session.id)} catch(e) {setError((e as Error).message)} finally {setBusy(false)}
   }
 
+  async function correctMemory() {
+    if (!session || !editingMemory || busy) return
+    if (!correction.trim()) {setError(t('memoryEditError')); return}
+    setBusy(true); setError('')
+    try {
+      await api(`/sessions/${session.id}/memories/${editingMemory}`, 'PUT', {content: correction.trim()})
+      await refresh(session.id); setEditingMemory(null); setCorrection('')
+    } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+  }
+
+  async function runAnalysis(text = question) {
+    if (busy) return
+    if (!text.trim()) {setError(t('questionError')); return}
+    const epoch = connectionEpoch.current
+    setBusy(true); setAnalyzing(true); setQuestion(text); setError(''); setAnalysis(null); setAnalysisFailure([])
+    try {
+      const result = await api<Analysis>('/data-agent', 'POST', {question: text.trim()})
+      if (epoch === connectionEpoch.current) setAnalysis(result)
+    } catch(e) {if (epoch === connectionEpoch.current) {setError((e as Error).message); if (e instanceof ApiError && e.trace.length) setAnalysisFailure(e.trace as Trace[])}} finally {setBusy(false); setAnalyzing(false)}
+  }
+
   async function clear(all: boolean) {
-    if (!session || busy || !confirm(all ? '删除当前会话、记忆、运行记录和人工评审？此操作不能撤销，其他会话保留。' : '清空当前对话、待确认记忆及相关人工评审？已确认记忆将保留。')) return
+    if (!session || busy || !confirm(t(all ? 'deleteConfirm' : 'clearConfirm'))) return
     const sid = session.id
     setBusy(true); setError('')
     try {
-      await api(`/sessions/${sid}${all ? '' : '/history'}`, 'DELETE'); setLastRun(null); retry.current = null; setDraft(''); setMemoryDraft('')
+      await api(`/sessions/${sid}${all ? '' : '/history'}`, 'DELETE'); setLastRun(null); setFailedTrace([]); retry.current = null; setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false)
       if (all) {
         knownIds.current = persistKnownSessions(knownIds.current.filter(id => id !== sid))
         localStorage.removeItem(getSessionKey('harbor-session')); setSession(null); setTab('characters')
@@ -229,9 +279,10 @@ export function App() {
       setBusy(true); connectionEpoch.current += 1
       setConnectionDraft(getConnection())
       setSession(null); setSessions([]); setLastRun(null); retry.current = null
+      setEditingMemory(null); setReuseMemories(false); setAnalysis(null); setFailedTrace([]); setAnalysisFailure([])
       setStatus(null); setCharacters([]); setCatalogState('loading'); setDraft(''); setMemoryDraft(''); setRestoring(false)
       knownIds.current = readKnownSessions()
-      setConnectionNotice('已更新连接。不同后端的会话入口独立保留；会话不会跨设备自动同步。访问码只在当前浏览器会话保存。')
+      setConnectionNotice(t('connectionUpdated'))
       await reloadService()
       const sid = localStorage.getItem(getSessionKey('harbor-session'))
       if (sid) {
@@ -252,76 +303,87 @@ export function App() {
   const mock = status?.provider === 'mock'
   const pendingCount = session?.memories.filter(memory => memory.status === 'pending').length || 0
 
-  return <div className={`app-shell tab-${tab} detail-${desktopDetail} ${keyboardOpen ? 'keyboard-open' : ''}`}>
+  return <div className={`app-shell tab-${tab} detail-${desktopDetail} language-${language} ${keyboardOpen ? 'keyboard-open' : ''}`}>
     <header className="topbar">
-      <button className="brand" onClick={() => goToTab('characters')} aria-label="港湾，查看角色"><span className="brand-icon">◒</span><span><strong>harbor<span className="brand-dot">.</span></strong><small>港湾 · AI 陪伴</small></span></button>
-      <div className="topbar-right"><span className={`provider-pill ${mock ? 'mock' : ''}`} title={mock ? '模拟模型只演示流程' : '实际可用性以聊天请求结果为准'}><i/>{status ? mock ? '模拟演示' : status.configured ? 'API 已配置' : '模型待配置' : '连接服务…'}</span><button className="desktop-account icon-button" aria-label="我的会话与设置" onClick={() => goToTab('me')}>☷</button></div>
+      <button className="brand" onClick={() => goToTab('characters')} aria-label={t('brandHome')}><span className="brand-icon">◒</span><span><strong>harbor<span className="brand-dot">.</span></strong><small>{t('brand')}</small></span></button>
+      <div className="topbar-right"><label className="language-control"><span className="sr-only">{t('language')}</span><select aria-label={t('language')} value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="zh">中文</option><option value="en">EN</option></select></label><span className={`provider-pill ${mock ? 'mock' : ''}`} title={t(mock ? 'mockHint' : 'apiHint')}><i/>{status ? mock ? t('mockStatus') : status.configured ? t('apiConfigured') : t('modelPending') : t('connecting')}</span><button className="desktop-account icon-button" aria-label={t('accountLabel')} onClick={() => goToTab('me')}>☷</button></div>
     </header>
-    {error && <div className="global-error" role="alert"><span>{error}</span>{retry.current && session?.id === retry.current.sid && <button disabled={busy} onClick={() => send(retry.current!.text)}>重试发送</button>}<button className="error-dismiss" onClick={() => setError('')} aria-label="关闭错误提示">×</button></div>}
+    {error && <div className="global-error" role="alert"><span>{error}</span>{retry.current && session?.id === retry.current.sid && <button disabled={busy} onClick={() => send(retry.current!.text)}>{t('retry')}</button>}<button className="error-dismiss" onClick={() => setError('')} aria-label={t('dismiss')}>×</button></div>}
     <main className="layout">
-      <section className="character-panel page-panel" aria-label="角色选择">
-        <div className="page-heading"><p className="eyebrow">YOUR LITTLE HARBOR</p><h1>找到你的<br/>停靠点<span>。</span></h1><p className="muted">原创 AI 角色。由你决定相处的方式。</p></div>
-        <div className="character-hero"><span className="hero-constellation">✧</span><Portrait character={selectedCharacter}/><div className="hero-name"><h2>{selectedCharacter.name}<span>✦</span></h2><span className="tag">AI 角色 · v{selectedCharacter.revision}</span></div><p className="character-tagline">{selectedCharacter.tagline}</p><p className="character-copy">{selectedCharacter.description}</p></div>
-        <div className="section-title"><h3>选择角色</h3><span>原创二维形象</span></div>
-        <div className="character-options" aria-label="可用角色">
-          {!characters.length && <div className="catalog-empty"><p>{catalogState === 'ready' ? '当前暂无公开角色，请在后台发布角色。' : catalogState === 'error' ? '暂未取得角色，请检查连接设置。' : '正在获取可用角色…'}</p><button className="text-button" onClick={reloadService}>重新连接</button></div>}
-          {characters.map(character => <button disabled={busy} key={character.id} className={`character-card ${selectedCharacterId === character.id ? 'selected' : ''}`} onClick={() => setSelectedCharacterId(character.id)} aria-pressed={selectedCharacterId === character.id}><Portrait character={character} small/><strong>{character.name}</strong><span>{character.tagline}</span>{selectedCharacterId === character.id && <b className="selection-check">✓</b>}</button>)}
+      <section className="character-panel page-panel" aria-label={t('chooseCharacter')}>
+        <div className="page-heading"><p className="eyebrow">YOUR LITTLE HARBOR</p><h1>{t('characterTitle')}</h1><p className="muted">{t('characterSubtitle')}</p></div>
+        <div className="character-hero"><span className="hero-constellation">✧</span><Portrait character={selectedCharacter} language={language}/><div className="hero-name"><h2>{selectedCharacter.name}<span>✦</span></h2><span className="tag">{t('aiRole')} · v{selectedCharacter.revision}</span></div><p className="character-tagline">{selectedCharacter.tagline}</p><p className="character-copy">{selectedCharacter.description}</p></div>
+        {language === 'en' && <p className="original-copy-note">{t('originalCopy')}</p>}
+        <div className="section-title"><h3>{t('chooseCharacter')}</h3><span>{t('originalArt')}</span></div>
+        <div className="character-options" aria-label={t('chooseCharacter')}>
+          {!characters.length && <div className="catalog-empty"><p>{t(catalogState === 'ready' ? 'catalogEmpty' : catalogState === 'error' ? 'catalogError' : 'catalogLoading')}</p><button className="text-button" onClick={reloadService}>{t('reconnect')}</button></div>}
+          {characters.map(character => <button disabled={busy} key={character.id} className={`character-card ${selectedCharacterId === character.id ? 'selected' : ''}`} onClick={() => setSelectedCharacterId(character.id)} aria-pressed={selectedCharacterId === character.id}><Portrait character={character} small language={language}/><strong>{character.name}</strong><span>{character.tagline}</span>{selectedCharacterId === character.id && <b className="selection-check">✓</b>}</button>)}
         </div>
-        <div className="section-title mode-title"><h3>相处方式</h3><span>随时可开启新会话</span></div>
-        <div className="mode-options"><button disabled={busy} className={mode === 'friend' ? 'selected' : ''} onClick={() => setMode('friend')} aria-pressed={mode === 'friend'}><span>◌ 朋友陪伴</span><small>轻松、平等、认真倾听</small></button><button disabled={busy} className={mode === 'gentle_romance' ? 'selected' : ''} onClick={() => setMode('gentle_romance')} aria-pressed={mode === 'gentle_romance'}><span>♡ 温柔关系</span><small>成年人，温和、非露骨</small></button></div>
-        <label className="adult-check"><input type="checkbox" checked={adult} disabled={busy} onChange={e => setAdult(e.target.checked)}/><span>我已满 18 岁，了解对方是 AI，记忆由我确认，服务不提供心理诊断。</span></label>
-        <button className="primary start-chat" disabled={!adult || busy || !status || !characters.length} onClick={start}>{busy && !sending ? '正在处理…' : `与 ${selectedCharacter.name} 开启${session ? '新' : ''}对话`}<span>↗</span></button>
-        {session && <p className="micro">新对话独立保存。已有会话可在“我的”中恢复。</p>}
-        <p className="footer-note">陪伴可以暂停，记忆可以删除。<br/>这是一款开发中的成年人 AI 陪伴原型。</p>
+        <div className="section-title mode-title"><h3>{t('relationship')}</h3><span>{t('newAnytime')}</span></div>
+        <div className="mode-options"><button disabled={busy} className={mode === 'friend' ? 'selected' : ''} onClick={() => setMode('friend')} aria-pressed={mode === 'friend'}><span>◌ {t('friend')}</span><small>{t('friendHint')}</small></button><button disabled={busy} className={mode === 'gentle_romance' ? 'selected' : ''} onClick={() => setMode('gentle_romance')} aria-pressed={mode === 'gentle_romance'}><span>♡ {t('romance')}</span><small>{t('romanceHint')}</small></button></div>
+        {session && <div className="memory-reuse"><label><input type="checkbox" checked={reuseMemories} disabled={busy} onChange={event => setReuseMemories(event.target.checked)}/><span>{t('shareMemory', {name: characterName})}</span></label><p>{t(reuseMemories ? 'shareHint' : 'isolatedHint')}</p></div>}
+        <label className="adult-check"><input type="checkbox" checked={adult} disabled={busy} onChange={event => setAdult(event.target.checked)}/><span>{t('adult')}</span></label>
+        <button className="primary start-chat" disabled={!adult || busy || !status || !characters.length} onClick={start}>{busy && !sending ? t('processing') : t(session ? 'startNew' : 'start', {name: selectedCharacter.name})}<span>↗</span></button>
+        {session && <p className="micro">{t('previousSessions')}</p>}
+        <p className="footer-note">{t('footer')}</p>
       </section>
 
-      <section className="conversation-panel page-panel" aria-label="对话">
-        <div className="conversation-header"><div className="chat-avatar"><Portrait character={currentCharacter} small/></div><div className="conversation-title"><h2>{session ? characterName : '从一句你好开始'}</h2><p>{session ? `${modeNames[session.mode] || session.mode} · AI 角色` : '为自己留一小段安静的时间'}</p></div><button className="icon-button session-shortcut" aria-label="查看本设备会话" onClick={() => goToTab('me')}>☷</button></div>
-        {mock && <div className="demo-notice"><span>模拟模式</span>固定回复与工具流程演示，真实聊天质量待 API 接入后评估。</div>}
-        {restoring && !session ? <div className="welcome"><div className="welcome-symbol">◌</div><h3>正在恢复你的停靠点…</h3><p>会话仍保存在当前服务端。</p></div> : !session ? <div className="welcome"><div className="welcome-symbol">☾</div><h3>今天，不必着急。</h3><p>选一个角色，留下一句话。<br/>你决定话题，也决定哪些事值得被记住。</p><button className="primary" onClick={() => goToTab('characters')}>选择角色 <span>↗</span></button><div className="welcome-features"><span>◇ 记忆须确认</span><span>◌ 会话独立保存</span><span>✧ 明确 AI 身份</span></div></div> : <>
+      <section className="conversation-panel page-panel" aria-label={t('chat')}>
+        <div className="conversation-header"><div className="chat-avatar"><Portrait character={currentCharacter} small language={language}/></div><div className="conversation-title"><h2>{session ? characterName : t('welcomeTitle')}</h2><p>{session ? `${modeNames[session.mode] || session.mode} · ${t('aiRole')}` : t('welcomeSubtitle')}</p></div><button className="icon-button session-shortcut" aria-label={t('viewSessions')} onClick={() => goToTab('me')}>☷</button></div>
+        {mock && <div className="demo-notice"><span>{t('mockMode')}</span>{t('mockBanner')}</div>}
+        {restoring && !session ? <div className="welcome"><div className="welcome-symbol">◌</div><h3>{t('restoring')}</h3><p>{t('storedBackend')}</p></div> : !session ? <div className="welcome"><div className="welcome-symbol">☾</div><h3>{t('notRush')}</h3><p>{t('welcomeCopy')}</p><button className="primary" onClick={() => goToTab('characters')}>{t('chooseCharacter')}<span>↗</span></button><div className="welcome-features"><span>◇ {t('consentFeature')}</span><span>◌ {t('sessionFeature')}</span><span>✧ {t('identityFeature')}</span></div></div> : <>
           <div className="messages" aria-live="polite" aria-busy={sending}>
-            {session.messages.length === 0 && <div className="empty-chat"><Portrait character={currentCharacter} small/><p>{session.character_greeting || currentCharacter.greeting}</p><span>试着说说今天发生的一件小事。</span></div>}
-            {session.messages.map((message, index) => <div key={index} className={`message ${message.role}`}><span className="speaker">{message.role === 'assistant' ? characterName : '我'}</span><div className="bubble">{message.content}</div></div>)}
-            {pendingText && <div className="message user pending-message"><span className="speaker">我 · 发送中</span><div className="bubble">{pendingText}</div></div>}
-            {sending && <div className="typing" role="status"><span/><span/><span/><em>正在回应这一轮…</em></div>}
+            {session.messages.length === 0 && <div className="empty-chat"><Portrait character={currentCharacter} small language={language}/><p>{session.character_greeting || currentCharacter.greeting}</p><span>{t('firstMessage')}</span>{language === 'en' && <span>{t('originalCopy')}</span>}</div>}
+            {session.messages.map((message, index) => <div key={index} className={`message ${message.role}`}><span className="speaker">{message.role === 'assistant' ? characterName : t('you')}</span><div className="bubble">{message.content}</div></div>)}
+            {pendingText && <div className="message user pending-message"><span className="speaker">{t('you')} · {t('sending')}</span><div className="bubble">{pendingText}</div></div>}
+            {sending && <div className="typing" role="status"><span/><span/><span/><em>{t('responding')}</em></div>}
             <div ref={messagesEnd} className="messages-end"/>
           </div>
-          <div className="composer-area"><div className="starters">{['今天有点压力', '记住：我喜欢海边散步', '你还记得我吗？'].map(text => <button disabled={busy} key={text} onClick={() => send(text)}>{text}</button>)}</div>
-            <form onSubmit={e => {e.preventDefault(); if (!composing.current) void send()}}><textarea ref={input} aria-label="消息" placeholder="慢慢说，我在听…" rows={1} value={draft} maxLength={2000} disabled={busy} onChange={e => setDraft(e.target.value)} onCompositionStart={() => {composing.current = true}} onCompositionEnd={() => {composing.current = false}} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !composing.current && e.keyCode !== 229) {e.preventDefault(); void send()}}}/><button type="submit" aria-label="发送消息" disabled={busy || !draft.trim()}>↑</button></form>
-            <p className="composer-note"><span>你掌握对话的节奏。</span><span className="desktop-composer-hint">Enter 发送 · Shift + Enter 换行</span></p>
+          <div className="composer-area"><div className="starters">{starters[language].map(text => <button disabled={busy} key={text} onClick={() => send(text)}>{text}</button>)}</div>
+            <form onSubmit={event => {event.preventDefault(); if (!composing.current) void send()}}><textarea ref={input} aria-label={t('messageLabel')} placeholder={t('messagePlaceholder')} rows={1} value={draft} maxLength={2000} disabled={busy} onChange={event => setDraft(event.target.value)} onCompositionStart={() => {composing.current = true}} onCompositionEnd={() => {composing.current = false}} onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) {event.preventDefault(); void send()}}}/><button type="submit" aria-label={t('sendMessage')} disabled={busy || !draft.trim()}>↑</button></form>
+            <p className="composer-note"><span>{t('yourPace')}</span><span className="desktop-composer-hint">{t('enterHint')}</span></p>
           </div>
         </>}
       </section>
 
+      <section className="data-panel page-panel" aria-label={t('dataAgent')}>
+        <div className="data-header"><button className="text-button" onClick={() => goToTab('me')}>← {t('back')}</button><span>DATA AGENT / SYNTHETIC</span></div>
+        <div className="page-heading"><p className="eyebrow">QUESTION → QUERY → EVIDENCE</p><h2>{t('dataTitle')}</h2><p className="muted">{t('dataSubtitle')}</p></div>
+        <div className="demo-notice data-notice">{t('dataBoundary')}</div>
+        <form className="analysis-form" onSubmit={event => {event.preventDefault(); void runAnalysis()}}><label htmlFor="analysis-question">{t('dataQuestion')}</label><textarea id="analysis-question" rows={3} maxLength={300} disabled={busy} value={question} placeholder={t('dataPlaceholder')} onChange={event => setQuestion(event.target.value)}/><div className="analysis-examples">{analysisQuestions[language].map(text => <button type="button" disabled={busy} key={text} onClick={() => setQuestion(text)}>{text}</button>)}</div><button className="primary" disabled={busy || !question.trim()} type="submit">{t(analyzing ? 'analyzing' : 'analyze')}<span>↗</span></button></form>
+        <div className="analysis-results" aria-live="polite" aria-busy={analyzing}>{analyzing ? <p className="micro">{t('analyzing')}</p> : !analysis ? <>{analysisFailure.length > 0 && <details className="analysis-detail" open><summary>{t('failureTrace')}</summary><TraceList items={analysisFailure} language={language}/></details>}<div className="small-empty">{t('dataEmpty')}</div></> : <><article className="analysis-answer"><h3>{t('dataAnswer')}</h3><p>{analysis.answer}</p></article><div className="analysis-provenance"><section><h3>{t('dataSource')}</h3><JsonValue value={analysis.source}/></section><section><h3>{t('dataScope')}</h3><JsonValue value={analysis.scope}/></section></div><details className="analysis-detail" open><summary>{t('dataPlan')}</summary><JsonValue value={analysis.plan}/></details><details className="analysis-detail" open><summary>{t('dataResult')}</summary><JsonValue value={analysis.result}/></details><details className="analysis-detail"><summary>{t('dataTrace')}</summary><p className="micro">{t('traceHint')}</p><TraceList items={analysis.trace || []} language={language}/></details></>}</div>
+      </section>
+
       <aside className="details-column">
-        <div className="panel-tabs"><button className={desktopDetail === 'memory' ? 'active' : ''} onClick={() => goToTab('memory')}>记忆手札{pendingCount > 0 && <span className="count-badge">{pendingCount}</span>}</button><button className={desktopDetail === 'me' ? 'active' : ''} onClick={() => goToTab('me')}>我的会话</button></div>
-        <section className="memory-panel page-panel" aria-label="记忆管理">
-          <div className="page-heading"><p className="eyebrow">ONLY WHAT YOU CHOOSE</p><h2>记忆手札<span>◇</span></h2><p className="muted">留下一点点，让下次更好地认识你。</p></div>
-          {session ? <><div className="session-context"><span>当前会话</span><strong>{characterName}</strong><small>{modeNames[session.mode]} · v{session.character_revision || 1}</small></div><div className="memory-explainer"><span>◇</span><p>AI 可以提出记忆建议。确认后才进入长期记忆检索；近期聊天仍作为上下文。不同会话不共用记忆。</p></div>
-            {!session.memories.length && <div className="memory-empty"><span>▱</span><h3>手札还是空白的</h3><p>在聊天中说“记住：我喜欢海边散步”，<br/>或者在下方写一条你愿意保存的事。</p></div>}
-            <div className="memory-list">{session.memories.map(memory => <article className="memory-card" key={memory.id}><span className={`memory-status ${memory.status}`}><i/>{memory.status === 'pending' ? '等待你确认' : '已确认的记忆'}</span><p>{memory.content}</p><div>{memory.status === 'pending' && <button disabled={busy} onClick={() => memoryAction(memory.id, 'approve')}>✓ 确认记住</button>}<button disabled={busy} className="text-button" onClick={() => memoryAction(memory.id, 'delete')}>{memory.status === 'pending' ? '不保存' : '删除记忆'}</button></div></article>)}</div>
-            <form className="memory-form" onSubmit={e => {e.preventDefault(); void addMemory()}}><label htmlFor="manual-memory">我想主动记下</label><textarea id="manual-memory" maxLength={300} rows={3} disabled={busy} placeholder="例如：比起建议，我有时更需要被认真听见。" value={memoryDraft} onChange={e => setMemoryDraft(e.target.value)}/><div><span>{memoryDraft.length}/300</span><button disabled={busy || !memoryDraft.trim()}>确认并保存 ↗</button></div></form>
-            <p className="micro">删除一条记忆不会抹去旧聊天内容。如需彻底移除，请在“我的”中删除当前会话。</p>
-          </> : <div className="memory-empty"><span>◇</span><h3>先开启一段对话</h3><p>记忆属于具体会话，只有你确认后才会生效。</p><button className="secondary" onClick={() => goToTab('characters')}>去选择角色 ↗</button></div>}
+        <div className="panel-tabs"><button className={desktopDetail === 'memory' ? 'active' : ''} onClick={() => goToTab('memory')}>{t('memoryTitle')}{pendingCount > 0 && <span className="count-badge">{pendingCount}</span>}</button><button className={desktopDetail === 'me' ? 'active' : ''} onClick={() => goToTab('me')}>{t('deviceSessions')}</button></div>
+        <section className="memory-panel page-panel" aria-label={t('memoryTitle')}>
+          <div className="page-heading"><p className="eyebrow">ONLY WHAT YOU CHOOSE</p><h2>{t('memoryTitle')}<span>◇</span></h2><p className="muted">{t('memorySubtitle')}</p></div>
+          {session ? <><div className="session-context"><span>{t('currentSession')}</span><strong>{characterName}</strong><small>{modeNames[session.mode]} · v{session.character_revision || 1}</small></div><div className="memory-explainer"><span>◇</span><p>{t('memoryExplanation')}</p></div><p className="pending-lifetime">{t('pendingHint')}</p>
+            {!session.memories.length && <div className="memory-empty"><span>▱</span><h3>{t('memoryEmptyTitle')}</h3><p>{t('memoryEmptyHint')}</p></div>}
+            <div className="memory-list">{session.memories.map(memory => <article className="memory-card" key={memory.id}><span className={`memory-status ${memory.status}`}><i/>{t(memory.status === 'pending' ? 'pending' : 'approved')}</span>{editingMemory === memory.id ? <form className="correction-form" onSubmit={event => {event.preventDefault(); void correctMemory()}}><label htmlFor={`correction-${memory.id}`}>{t('correctionLabel')}</label><textarea id={`correction-${memory.id}`} rows={3} maxLength={300} value={correction} disabled={busy} onChange={event => setCorrection(event.target.value)}/><div><button disabled={busy || !correction.trim()}>{t('saveCorrection')}</button><button disabled={busy} type="button" className="text-button" onClick={() => setEditingMemory(null)}>{t('cancel')}</button></div></form> : <><p>{memory.content}</p><div>{memory.status === 'pending' && <button disabled={busy} onClick={() => memoryAction(memory.id, 'approve')}>✓ {t('approve')}</button>}<button disabled={busy} className="text-button" onClick={() => {setEditingMemory(memory.id); setCorrection(memory.content)}}>{t(memory.status === 'pending' ? 'editApprove' : 'correct')}</button><button disabled={busy} className="text-button" onClick={() => memoryAction(memory.id, 'delete')}>{t(memory.status === 'pending' ? 'reject' : 'deleteMemory')}</button></div></>}</article>)}</div>
+            <form className="memory-form" onSubmit={event => {event.preventDefault(); void addMemory()}}><label htmlFor="manual-memory">{t('manualMemory')}</label><textarea id="manual-memory" maxLength={300} rows={3} disabled={busy} placeholder={t('memoryPlaceholder')} value={memoryDraft} onChange={event => setMemoryDraft(event.target.value)}/><div><span>{memoryDraft.length}/300</span><button disabled={busy || !memoryDraft.trim()}>{t('saveMemory')} ↗</button></div></form>
+            <p className="micro">{t('memoryDeleteHint')}</p>
+          </> : <div className="memory-empty"><span>◇</span><h3>{t('startFirst')}</h3><p>{t('memoryNoSession')}</p><button className="secondary" onClick={() => goToTab('characters')}>{t('chooseCharacter')} ↗</button></div>}
         </section>
 
-        <section className="account-panel page-panel" aria-label="我的会话与设置">
-          <div className="page-heading"><p className="eyebrow">YOUR SPACE, YOUR PACE</p><h2>我的停靠点<span>◒</span></h2><p className="muted">管理会话、数据与应用设置。</p></div>
-          <div className="section-title"><h3>本设备会话</h3><button className="text-button" disabled={busy} onClick={() => goToTab('characters')}>＋ 新对话</button></div>
-          <p className="micro session-list-note">这里最多保存 20 个会话入口。聊天数据在服务端，换浏览器不会自动同步入口；丢失入口后无法从这里恢复。</p>
-          <div className="session-list">{sessions.length ? sessions.map(item => <button key={item.id} disabled={busy} className={`session-card ${item.id === session?.id ? 'current' : ''}`} onClick={() => restoreSession(item.id)}><span className="session-card-icon">◌</span><span><strong>{item.character_name || 'AI 角色'}{item.id === session?.id && <i>当前</i>}</strong><small>{modeNames[item.mode] || item.mode} · {item.turn_count} 轮</small><small>{shortDate(item.last_active || item.created)}</small></span><b>↗</b></button>) : <div className="small-empty">还没有可恢复的会话。<br/>在“角色”中开启新的停靠点。</div>}</div>
-          <div className="settings-block"><div className="section-title"><h3>应用与连接</h3><button className="text-button" disabled={busy} onClick={reloadService}>刷新</button></div><div className="setting-row"><span>当前模型</span><strong>{status ? mock ? '模拟流程' : status.model || '待配置' : '尚未连接'}</strong></div><div className="setting-row"><span>数据范围</span><strong>当前服务端 / 当前会话</strong></div><AppInstall/><a className="admin-entry" href="?view=admin"><span>⚙ 管理后台<small>角色配置、服务设置与运行概览</small></span><b>↗</b></a></div>
-          <details className="connection-card"><summary>手机 / 远程后端连接 <span>⌄</span></summary><p className="micro">填写部署方提供的 HTTPS API 地址及演示访问码。访问码不是模型 API 密钥；不要把模型密钥放在这里。远程服务需先完成受控部署。</p><form className="connection-form" onSubmit={e => {e.preventDefault(); void saveConnection()}}><label htmlFor="connection-url">后端地址</label><input id="connection-url" type="url" autoComplete="url" placeholder="https://your-api.example.com" value={connection.baseUrl} onChange={e => setConnectionDraft({...connection, baseUrl: e.target.value})}/><label htmlFor="connection-code">演示访问码</label><input id="connection-code" type="password" autoComplete="off" placeholder="由部署方提供，按需填写" value={connection.accessToken} onChange={e => setConnectionDraft({...connection, accessToken: e.target.value})}/><div><button type="submit" disabled={busy}>保存连接</button><button className="text-button" type="button" disabled={busy} onClick={() => saveConnection(true)}>恢复默认</button></div></form>{connectionNotice && <p className="connection-notice" role="status">{connectionNotice}</p>}<p className="micro">网页版可留空，使用当前站点的后端。原生手机 App 需要可访问的 HTTPS 后端。会话入口不会跨设备自动同步。</p></details>
-          <details className="privacy-card"><summary>隐私与使用边界 <span>⌄</span></summary><p>对话和已确认记忆保存在当前服务端的数据库。浏览器保存会话入口及当前连接设置，不保存模型 API 密钥。会话入口相当于当前会话的访问凭据，请勿分享。</p><p>启用真实模型时，对话和必要上下文会发送至你配置的模型服务。请勿填写证件、账户密码或其他不愿分享的隐私信息。</p><p>这里的角色始终是 AI。本应用不提供心理诊断、治疗或紧急服务。你可以随时暂停、清空历史或删除整个会话。</p></details>
-          {session && <><details className="insights-card"><summary>当前会话观察 <span>⌄</span></summary><p className="micro">以下是当前会话的流程统计。关键词标签只是初步规则，不是情绪识别或医学结论。</p><div className="metrics"><div><span>已完成</span><strong>{session.insights.turn_count}<small> 轮</small></strong></div><div><span>服务端中位耗时</span><strong>{session.insights.median_latency_ms ?? '—'}<small> ms</small></strong></div></div><p className="micro">模拟模型耗时不能代表真实 LLM 的回复速度。</p><div className="mood-bars">{Object.entries(session.insights.emotion_counts).map(([key, value]) => <div key={key}><span>{moodNames[key] || key}</span><div><i style={{width: `${value / Math.max(session.insights.turn_count, 1) * 100}%`}}/></div><b>{value}</b></div>)}</div></details>
-            <details className="trace"><summary>最近一轮的工具轨迹 <span>⌄</span></summary>{lastRun ? <><p className="micro">只展示可观察动作，不显示模型私有推理。切换会话后此面板重置。</p>{lastRun.trace.map((item, index) => <div key={index}><span>{String(index + 1).padStart(2, '0')}</span><code>{item.name}</code><b>{item.status}</b></div>)}</> : <p className="micro">在当前会话完成一轮对话后显示。</p>}</details>
-            <div className="data-actions"><h3>当前会话数据</h3><button disabled={busy} onClick={() => clear(false)}><span>清空聊天历史<small>保留已确认记忆，清除建议与相关评审</small></span><b>↗</b></button><button className="danger" disabled={busy} onClick={() => clear(true)}><span>删除整个会话<small>移除聊天、记忆、运行记录和评审，不可撤销</small></span><b>×</b></button></div>
+        <section className="account-panel page-panel" aria-label={t('accountLabel')}>
+          <div className="page-heading"><p className="eyebrow">YOUR SPACE, YOUR PACE</p><h2>{t('myTitle')}<span>◒</span></h2><p className="muted">{t('mySubtitle')}</p></div>
+          <div className="section-title"><h3>{t('deviceSessions')}</h3><button className="text-button" disabled={busy} onClick={() => goToTab('characters')}>＋ {t('newChat')}</button></div>
+          <p className="micro session-list-note">{t('deviceHint')}</p>
+          <div className="session-list">{sessions.length ? sessions.map(item => <button key={item.id} disabled={busy} className={`session-card ${item.id === session?.id ? 'current' : ''}`} onClick={() => restoreSession(item.id)}><span className="session-card-icon">◌</span><span><strong>{item.character_name || t('aiRole')}{item.id === session?.id && <i>{t('current')}</i>}</strong><small>{modeNames[item.mode] || item.mode} · {item.turn_count} {t('turns')}</small><small>{shortDate(item.last_active || item.created, language)}</small></span><b>↗</b></button>) : <div className="small-empty">{t('noSessions')}</div>}</div>
+          <button className="data-agent-entry" onClick={() => goToTab('data')}><span>◈ {t('dataAgent')}<small>{t('dataEntryHint')}</small></span><b>↗</b></button>
+          <div className="settings-block"><div className="section-title"><h3>{t('appConnection')}</h3><button className="text-button" disabled={busy} onClick={reloadService}>{t('refresh')}</button></div><div className="setting-row"><span>{t('currentModel')}</span><strong>{status ? mock ? t('mockFlow') : status.model || t('pendingConfig') : t('disconnected')}</strong></div><div className="setting-row"><span>{t('dataRange')}</span><strong>{t('currentBackend')}</strong></div>{!online && language === 'en' && <p className="connection-notice" role="status">{t('offline')}</p>}{language === 'zh' ? <AppInstall/> : !isNativeApp() && <details className="install-guide"><summary>{t('installTitle')}</summary><p>{t('installHint')}</p><small>{t('installBoundary')}</small></details>}<a className="admin-entry" href="?view=admin"><span>⚙ {t('admin')}<small>{t('adminHint')}</small></span><b>↗</b></a></div>
+          <details className="connection-card"><summary>{t('connectionTitle')}<span>⌄</span></summary><p className="micro">{t('connectionHint')}</p><form className="connection-form" onSubmit={event => {event.preventDefault(); void saveConnection()}}><label htmlFor="connection-url">{t('backendAddress')}</label><input id="connection-url" type="url" autoComplete="url" placeholder="https://your-api.example.com" value={connection.baseUrl} onChange={event => setConnectionDraft({...connection, baseUrl: event.target.value})}/><label htmlFor="connection-code">{t('demoCode')}</label><input id="connection-code" type="password" autoComplete="off" placeholder={t('demoCodePlaceholder')} value={connection.accessToken} onChange={event => setConnectionDraft({...connection, accessToken: event.target.value})}/><div><button type="submit" disabled={busy}>{t('saveConnection')}</button><button className="text-button" type="button" disabled={busy} onClick={() => saveConnection(true)}>{t('resetConnection')}</button></div></form>{connectionNotice && <p className="connection-notice" role="status">{connectionNotice}</p>}<p className="micro">{t('connectionFooter')}</p></details>
+          <details className="privacy-card"><summary>{t('privacyTitle')}<span>⌄</span></summary><p>{t('privacy1')}</p><p>{t('privacy2')}</p><p>{t('privacy3')}</p></details>
+          {session && <><details className="insights-card"><summary>{t('insights')}<span>⌄</span></summary><p className="micro">{t('insightsHint')}</p><div className="metrics"><div><span>{t('completed')}</span><strong>{session.insights.turn_count}<small> {t('turns')}</small></strong></div><div><span>{t('medianTime')}</span><strong>{session.insights.median_latency_ms ?? '—'}<small> ms</small></strong></div></div><p className="micro">{t('mockTime')}</p><div className="mood-bars">{Object.entries(session.insights.emotion_counts).map(([key, value]) => <div key={key}><span>{moodNames[key] || key}</span><div><i style={{width: `${value / Math.max(session.insights.turn_count, 1) * 100}%`}}/></div><b>{value}</b></div>)}</div></details>
+            <details className="trace"><summary>{t(failedTrace.length ? 'failureTrace' : 'traceTitle')}<span>⌄</span></summary>{lastRun || failedTrace.length ? <><p className="micro">{t('traceHint')}</p><TraceList items={failedTrace.length ? failedTrace : lastRun!.trace} language={language}/></> : <p className="micro">{t('traceEmpty')}</p>}</details>
+            <div className="data-actions"><h3>{t('sessionData')}</h3><button disabled={busy} onClick={() => clear(false)}><span>{t('clearHistory')}<small>{t('clearHistoryHint')}</small></span><b>↗</b></button><button className="danger" disabled={busy} onClick={() => clear(true)}><span>{t('deleteSession')}<small>{t('deleteSessionHint')}</small></span><b>×</b></button></div>
           </>}
-          <div className="lab-note"><span>HARBOR COMPANION</span><p>开发中的 AI 陪伴应用。<br/>真实模型的人设、记忆与回应质量仍需独立评估。</p></div>
+          <div className="lab-note"><span>HARBOR COMPANION</span><p>{t('labNote')}</p></div>
         </section>
       </aside>
     </main>
-    <nav className="mobile-nav" aria-label="应用主导航">{tabItems.map(item => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => goToTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><span>{item.icon}{item.id === 'memory' && pendingCount > 0 && <i>{pendingCount}</i>}</span><small>{item.label}</small></button>)}</nav>
+    <nav className="mobile-nav" aria-label={t('navLabel')}>{tabItems.map(item => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => goToTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><span>{item.icon}{item.id === 'memory' && pendingCount > 0 && <i>{pendingCount}</i>}</span><small>{t(item.label)}</small></button>)}</nav>
   </div>
 }
 
@@ -335,7 +397,7 @@ function Root() {
     setManagement(false)
   }
   return management
-    ? <React.Suspense fallback={<div className="welcome" role="status">正在打开管理后台…</div>}><AdminApp onExit={leaveManagement}/></React.Suspense>
+    ? <React.Suspense fallback={<div className="welcome" role="status">{translator(readLanguage())('adminLoading')}</div>}><AdminApp onExit={leaveManagement}/></React.Suspense>
     : <App/>
 }
 

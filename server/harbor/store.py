@@ -1,6 +1,9 @@
 import json
+import hashlib
 import sqlite3
 import statistics
+import time
+from threading import RLock
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -16,6 +19,9 @@ def now():
 class Store:
     def __init__(self, path: str):
         self.path = path
+        # Unapproved proposals are process-local, expire, and are never stored in SQLite.
+        self._pending = {}
+        self._pending_lock = RLock()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
@@ -39,6 +45,11 @@ class Store:
             CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id,id);
             CREATE INDEX IF NOT EXISTS memories_session ON memories(session_id,created);
             CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id,created);
+            CREATE TABLE IF NOT EXISTS memory_spaces(id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS approved_memories(id TEXT PRIMARY KEY,
+              space_id TEXT NOT NULL REFERENCES memory_spaces(id) ON DELETE CASCADE,
+              content TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL, revision INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS approved_memory_space ON approved_memories(space_id,created);
             """)
             # Existing local sessions survive the additive migration and keep their original persona.
             columns = {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}
@@ -48,6 +59,8 @@ class Store:
                 "character_name": "TEXT NOT NULL DEFAULT 'Nova'",
                 "character_prompt": "TEXT NOT NULL DEFAULT ''",
                 "character_greeting": "TEXT NOT NULL DEFAULT ''",
+                "memory_scope": "TEXT REFERENCES memory_spaces(id)",
+                "language": "TEXT NOT NULL DEFAULT 'zh'",
             }.items():
                 if column not in columns:
                     db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {definition}")
@@ -55,6 +68,17 @@ class Store:
                 self._insert_character(db, character)
             db.execute("UPDATE sessions SET character_prompt=?,character_greeting=? WHERE character_prompt='' AND character_id='nova'",
                        (SEEDS[0]["system_prompt"], SEEDS[0]["greeting"]))
+            # One-way additive migration: isolate each legacy session, preserve approved facts only.
+            for row in db.execute("SELECT id FROM sessions WHERE memory_scope IS NULL").fetchall():
+                scope = str(uuid.uuid4())
+                db.execute("INSERT INTO memory_spaces VALUES(?)", (scope,))
+                db.execute("UPDATE sessions SET memory_scope=? WHERE id=?", (scope, row["id"]))
+            db.execute("""INSERT OR IGNORE INTO approved_memories
+                SELECT m.id,s.memory_scope,m.content,m.created,m.created,1
+                FROM memories m JOIN sessions s ON s.id=m.session_id WHERE m.status='approved'""")
+            db.execute("DELETE FROM memories")
+            if "request_hash" not in {row["name"] for row in db.execute("PRAGMA table_info(turns)")}:
+                db.execute("ALTER TABLE turns ADD COLUMN request_hash TEXT")
 
     @contextmanager
     def connect(self):
@@ -67,14 +91,22 @@ class Store:
         finally:
             db.close()
 
-    def create(self, mode: str, character_id="nova"):
+    def create(self, mode: str, character_id="nova", memory_from_session_id=None, language="zh"):
         character = self.character(character_id)
         if not character or not character["enabled"]:
             raise ValueError("Character is not available")
         sid = str(uuid.uuid4())
         with self.connect() as db:
-            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting) VALUES(?,?,?,?,?,?,?,?)",
-                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"]))
+            if memory_from_session_id:
+                source = db.execute("SELECT memory_scope FROM sessions WHERE id=?", (memory_from_session_id,)).fetchone()
+                if not source:
+                    raise ValueError("Memory source session not found")
+                scope = source["memory_scope"]
+            else:
+                scope = str(uuid.uuid4())
+                db.execute("INSERT INTO memory_spaces VALUES(?)", (scope,))
+            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting,memory_scope,language) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"], scope, language))
         return self.session(sid)
 
     def session(self, sid):
@@ -88,44 +120,113 @@ class Store:
             return [dict(r) for r in reversed(rows)]
 
     def memories(self, sid, status=None):
+        self._expire_proposals()
         with self.connect() as db:
-            sql = "SELECT * FROM memories WHERE session_id=?"
-            args = [sid]
-            if status:
-                sql += " AND status=?"
-                args.append(status)
-            return [dict(r) for r in db.execute(sql + " ORDER BY created DESC", args).fetchall()]
+            rows = db.execute("""SELECT m.id,m.content,m.created,m.updated,m.revision,'approved' AS status
+                FROM approved_memories m JOIN sessions s ON m.space_id=s.memory_scope
+                WHERE s.id=? ORDER BY m.created DESC""", (sid,)).fetchall() if status != "pending" else []
+        pending = [self._public_proposal(p) for p in self._proposal_snapshot() if p["session_id"] == sid] if status != "approved" else []
+        return pending + [dict(row) for row in rows]
+
+    def _expire_proposals(self):
+        with self._pending_lock:
+            stamp = time.monotonic()
+            for mid in list(self._pending):
+                if self._pending[mid]["expires_at"] <= stamp:
+                    self._pending.pop(mid, None)
+
+    def _proposal_snapshot(self):
+        with self._pending_lock:
+            self._expire_proposals()
+            return [dict(p) for p in self._pending.values()]
+
+    @staticmethod
+    def _public_proposal(p):
+        return {key: p[key] for key in ("id", "content", "status", "created")}
 
     def memory_add(self, sid, content, status="approved"):
+        content = content.strip()
+        if not 1 <= len(content) <= 300 or status not in {"approved", "pending"}:
+            raise ValueError("Invalid memory")
+        session = self.session(sid)
+        if not session:
+            raise ValueError("Session not found")
         mid = str(uuid.uuid4())
+        if status == "pending":
+            with self._pending_lock:
+                self._pending[mid] = {"id": mid, "session_id": sid, "content": content, "status": "pending",
+                                      "created": now(), "expires_at": time.monotonic() + 1800, "request_id": None}
+            return mid
         with self.connect() as db:
-            db.execute("INSERT INTO memories VALUES(?,?,?,?,?)", (mid, sid, content, status, now()))
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT COUNT(*) FROM approved_memories WHERE space_id=?", (session["memory_scope"],)).fetchone()[0] >= 100:
+                raise ValueError("Memory limit reached; remove older memories first.")
+            stamp = now()
+            db.execute("INSERT INTO approved_memories VALUES(?,?,?,?,?,1)", (mid, session["memory_scope"], content, stamp, stamp))
         return mid
 
     def memory_action(self, sid, mid, action):
-        with self.connect() as db:
+        self._expire_proposals()
+        with self._pending_lock:
+            pending = self._pending.get(mid)
+        if pending and pending["session_id"] == sid:
             if action == "approve":
-                cur = db.execute("UPDATE memories SET status='approved' WHERE id=? AND session_id=? AND status='pending'", (mid, sid))
-            else:
-                cur = db.execute("DELETE FROM memories WHERE id=? AND session_id=?", (mid, sid))
+                session = self.session(sid)
+                with self.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    if db.execute("SELECT COUNT(*) FROM approved_memories WHERE space_id=?", (session["memory_scope"],)).fetchone()[0] >= 100:
+                        raise ValueError("Memory limit reached; remove older memories first.")
+                    stamp = now()
+                    db.execute("INSERT INTO approved_memories VALUES(?,?,?,?,?,1)",
+                               (mid, session["memory_scope"], pending["content"], stamp, stamp))
+            elif action != "delete":
+                return False
+            with self._pending_lock:
+                self._pending.pop(mid, None)
+            return True
+        with self.connect() as db:
+            if action != "delete":
+                return False
+            cur = db.execute("DELETE FROM approved_memories WHERE id=? AND space_id=(SELECT memory_scope FROM sessions WHERE id=?)", (mid, sid))
             return cur.rowcount > 0
 
-    def cached(self, sid, request_id):
+    def memory_correct(self, sid, mid, content):
+        content = content.strip()
+        if not 1 <= len(content) <= 300:
+            return False
         with self.connect() as db:
-            row = db.execute("SELECT response FROM turns WHERE session_id=? AND request_id=?", (sid, request_id)).fetchone()
-            return json.loads(row[0]) if row else None
+            cur = db.execute("UPDATE approved_memories SET content=?,updated=?,revision=revision+1 WHERE id=? AND space_id=(SELECT memory_scope FROM sessions WHERE id=?)",
+                             (content, now(), mid, sid))
+            return cur.rowcount > 0
+
+    def cached(self, sid, request_id, user=None):
+        with self.connect() as db:
+            row = db.execute("SELECT response,request_hash FROM turns WHERE session_id=? AND request_id=?", (sid, request_id)).fetchone()
+            if row and user is not None and row["request_hash"] != hashlib.sha256(user.strip().encode()).hexdigest():
+                raise ValueError("Request ID was already used for a different message")
+            result = json.loads(row[0]) if row else None
+        self._expire_proposals()
+        if result:
+            result["pending_proposals"] = [self._public_proposal(p) for p in self._proposal_snapshot()
+                                           if p["session_id"] == sid and p["request_id"] == request_id]
+        return result
 
     def commit_turn(self, sid, request_id, user, result):
-        # A turn and its proposals are committed together; failed providers leave no half-turn.
+        proposals = result.pop("proposals", [])
+        # Completed dialogue is history; dedicated proposals and their contents are not durable memory.
         with self.connect() as db:
             for role, content in [("user", user), ("assistant", result["reply"])]:
                 db.execute("INSERT INTO messages(session_id,role,content,emotion,created) VALUES(?,?,?,?,?)",
                            (sid, role, content, result["emotion"], now()))
-            for content in result.pop("proposals", []):
-                db.execute("INSERT INTO memories VALUES(?,?,?,?,?)", (str(uuid.uuid4()), sid, content, "pending", now()))
-            db.execute("INSERT INTO turns VALUES(?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO turns(id,session_id,request_id,provider,emotion,latency_ms,response,created,request_hash) VALUES(?,?,?,?,?,?,?,?,?)",
                        (result["run_id"], sid, request_id, result["provider"], result["emotion"], result["latency_ms"],
-                        json.dumps(result, ensure_ascii=False), now()))
+                        json.dumps(result, ensure_ascii=False), now(), hashlib.sha256(user.strip().encode()).hexdigest()))
+        pending = []
+        for content in proposals:
+            mid = self.memory_add(sid, content, "pending")
+            self._pending[mid]["request_id"] = request_id
+            pending.append(self._public_proposal(self._pending[mid]))
+        result["pending_proposals"] = pending
         return result
 
     def insights(self, sid):
@@ -148,11 +249,17 @@ class Store:
             db.execute("DELETE FROM reviews WHERE session_id=?", (sid,))
             db.execute("DELETE FROM messages WHERE session_id=?", (sid,))
             db.execute("DELETE FROM turns WHERE session_id=?", (sid,))
-            db.execute("DELETE FROM memories WHERE session_id=? AND status='pending'", (sid,))
+        with self._pending_lock:
+            self._pending = {mid: p for mid, p in self._pending.items() if p["session_id"] != sid}
 
     def delete(self, sid):
         with self.connect() as db:
+            row = db.execute("SELECT memory_scope FROM sessions WHERE id=?", (sid,)).fetchone()
             db.execute("DELETE FROM sessions WHERE id=?", (sid,))
+            if row and not db.execute("SELECT id FROM sessions WHERE memory_scope=?", (row[0],)).fetchone():
+                db.execute("DELETE FROM memory_spaces WHERE id=?", (row[0],))
+        with self._pending_lock:
+            self._pending = {mid: p for mid, p in self._pending.items() if p["session_id"] != sid}
 
     @staticmethod
     def _insert_character(db, character):
@@ -189,7 +296,7 @@ class Store:
             return []
         sql = """SELECT s.id,s.character_id,s.character_name,s.character_revision,s.mode,s.created,
           (SELECT COUNT(*) FROM turns t WHERE t.session_id=s.id) AS turn_count,
-          (SELECT COUNT(*) FROM memories m WHERE m.session_id=s.id) AS memory_count,
+          (SELECT COUNT(*) FROM approved_memories m WHERE m.space_id=s.memory_scope) AS memory_count,
           COALESCE((SELECT MAX(t.created) FROM turns t WHERE t.session_id=s.id),s.created) AS last_active FROM sessions s"""
         params = []
         if ids is not None:
@@ -203,8 +310,9 @@ class Store:
     def overview(self):
         with self.connect() as db:
             counts = {name: db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] for name, table in {
-                "session_count": "sessions", "turn_count": "turns", "memory_count": "memories", "reviews_count": "reviews"}.items()}
-            counts["pending_memory_count"] = db.execute("SELECT COUNT(*) FROM memories WHERE status='pending'").fetchone()[0]
+                "session_count": "sessions", "turn_count": "turns", "memory_count": "approved_memories", "reviews_count": "reviews"}.items()}
+            self._expire_proposals()
+            counts["pending_memory_count"] = len(self._proposal_snapshot())
             counts["active_character_count"] = db.execute("SELECT COUNT(*) FROM characters WHERE enabled=1").fetchone()[0]
             counts["average_latency_ms"] = db.execute("SELECT AVG(latency_ms) FROM turns").fetchone()[0]
             counts["provider_counts"] = {row[0]: row[1] for row in db.execute("SELECT provider,COUNT(*) FROM turns GROUP BY provider")}

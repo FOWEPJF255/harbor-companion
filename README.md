@@ -2,7 +2,7 @@
 
 An inspectable character companion prototype: persona, multi-turn context, consent-based memory, bounded tool use, and evidence you can replay.
 
-**Stage: app and management prototype, v0.2.** The default mock provider uses deterministic replies to exercise infrastructure. Real conversational empathy, context quality, and relationship consistency are **not evaluated yet**. A server-side OpenAI-compatible adapter is ready for later credentials; no live API call has been made during development.
+**Stage: offline app and management prototype, v0.3.** The default mock provider uses deterministic replies to exercise infrastructure. Real conversational empathy, context quality, and relationship consistency are **not evaluated yet**. A server-side OpenAI-compatible adapter is ready for later credentials; no live API call has been made during development. See [current progress](docs/CURRENT.md) for the next bounded milestone and acceptance gaps.
 
 ## Product
 
@@ -15,14 +15,15 @@ The current prototype implements:
 - A React/TypeScript chat UI and Python/FastAPI backend.
 - Recent-turn context and an editable persona Skill.
 - An action/observation loop with an explicit tool allowlist and step/time budgets.
-- Memory proposals that become usable only after explicit user approval.
-- Session-scoped SQLite storage, idempotent retries, and full session deletion.
-- A read-only session analytics tool, with clearly labeled heuristic mood data.
+- Transient memory proposals; approval, explicit sharing between conversations, correction, and deletion.
+- Session-private dialogue, approved-memory spaces, content-checked idempotent retries, and orphan cleanup.
+- Session aggregates plus a natural-language DataAgent executing four allowlisted analyses on labeled synthetic data.
 - Observable tool traces, synthetic regression fixtures, and a real-model quality rubric.
 - Mobile app navigation, keyboard/safe-area handling, and per-device session entry management.
 - A login-protected management console for characters, versioned prompts, private session inspection, and human quality annotations.
 - Character snapshots: edited prompts apply to new conversations without silently changing existing ones.
 - Public-assets-only PWA support and an Android packaging workflow; no offline chat simulation or API cache.
+- Chinese/English user-interface foundation and language-aware mock/policy responses. Administration and original character descriptions remain in Chinese.
 
 ## Start on Windows
 
@@ -75,7 +76,7 @@ See [provider integration](docs/provider-integration.md) and [evaluation](docs/e
 ## Verify
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q --basetemp=data/pytest-local-unique
 .\.venv\Scripts\python.exe scripts/evaluate.py
 cd web
 npm run build
@@ -101,6 +102,9 @@ docs/               positioning, architecture, references, roadmap, evidence
 
 - [Positioning and job evidence](docs/positioning.md)
 - [Architecture and scope](docs/architecture.md)
+- [Memory consent and scope](docs/memory.md)
+- [Synthetic DataAgent](docs/data-agent.md)
+- [Current acceptance and next work](docs/CURRENT.md)
 - [GitHub references and licenses](docs/references.md)
 - [Two-week milestone plan](docs/roadmap.md)
 - [Demo walkthrough](docs/demo.md)

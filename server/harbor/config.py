@@ -16,6 +16,7 @@ class Settings:
     model: str = ""
     timeout: float = 30
     max_steps: int = 4
+    tool_timeout: float = 3
     db_path: str = "data/harbor.sqlite3"
     allowed_origins: tuple[str, ...] = ()
     allowed_hosts: tuple[str, ...] = ()
@@ -31,6 +32,7 @@ class Settings:
             model=os.getenv("HARBOR_MODEL", ""),
             timeout=float(os.getenv("HARBOR_TIMEOUT_SECONDS", "30")),
             max_steps=max(1, min(8, int(os.getenv("HARBOR_MAX_STEPS", "4")))),
+            tool_timeout=max(0.05, min(10, float(os.getenv("HARBOR_TOOL_TIMEOUT_SECONDS", "3")))),
             db_path=os.getenv("HARBOR_DB", str(ROOT / "data" / "harbor.sqlite3")),
             allowed_origins=tuple(x.strip() for x in os.getenv("HARBOR_ALLOWED_ORIGINS", "").split(",") if x.strip()),
             allowed_hosts=tuple(x.strip().lower() for x in os.getenv("HARBOR_ALLOWED_HOSTS", "").split(",") if x.strip()),

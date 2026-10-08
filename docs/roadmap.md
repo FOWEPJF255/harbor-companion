@@ -2,6 +2,12 @@
 
 This is a plan, not a promise to a recruiter or evidence of completed work. API availability and review feedback affect timing.
 
+## Current checkpoint: 2026-10-09
+
+The v0.3 offline checkpoint adds explicit cross-conversation memory consent/correction, bilingual UI, a bounded synthetic DataAgent and 50 reproducible application scenarios. Local checks are recorded in [evidence](evidence.md); semantic quality and physical-phone operation are pending. Continue from [CURRENT](CURRENT.md) rather than rebuilding milestone 0.
+
+Existing voice, dynamic-avatar and outreach deferrals remain in force. Streaming is optional only after an observed UX need, not a required new feature.
+
 ## Milestone 0: framework
 
 - Character chat UI and adult confirmation.

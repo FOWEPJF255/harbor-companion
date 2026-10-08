@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 
 from .providers import ProviderError
+from .data_agent import analyze
 from .safety import emotion, input_boundary, output_boundary
 
 SKILLS = Path(__file__).parent / "skills"
@@ -16,12 +17,20 @@ def tool(name, description, properties=None, required=None):
 
 
 TOOLS = [
-    tool("read_memories", "Read only user-approved memories from the current session."),
+    tool("read_memories", "Read only approved memories in this session's explicitly shared memory space."),
     tool("propose_memory", "Propose a memory for user approval. This does not make it available to recall.",
          {"content": {"type": "string", "minLength": 1, "maxLength": 300}}, ["content"]),
     tool("grounding_question", "Get a short optional grounding question, not clinical advice."),
     tool("session_insights", "Read aggregate turn counts and heuristic mood labels for the current session."),
+    tool("analyze_demo_data", "Execute a safe query on labeled synthetic demo analytics, never private conversations.",
+         {"question": {"type": "string", "minLength": 1, "maxLength": 300}}, ["question"]),
 ]
+
+
+class AgentFailure(ProviderError):
+    def __init__(self, reason, trace, provider, latency_ms):
+        super().__init__(reason)
+        self.reason, self.trace, self.provider, self.latency_ms = reason, trace, provider, latency_ms
 
 
 class Agent:
@@ -31,6 +40,16 @@ class Agent:
     def execute(self, sid, name, args, proposals):
         if name not in {t["function"]["name"] for t in TOOLS}:
             return {"error": "tool_not_allowed"}
+        if not isinstance(args, dict):
+            return {"error": "invalid_arguments"}
+        if name == "analyze_demo_data":
+            question = args.get("question")
+            if set(args) != {"question"} or not isinstance(question, str) or not 1 <= len(question.strip()) <= 300:
+                return {"error": "invalid_arguments"}
+            try:
+                return analyze(question)
+            except ValueError:
+                return {"error": "unsupported_or_unsafe_analysis", "scope": "synthetic demo data only"}
         if name == "propose_memory":
             content = args.get("content")
             if set(args) != {"content"} or not isinstance(content, str) or not 1 <= len(content.strip()) <= 300:
@@ -49,22 +68,36 @@ class Agent:
             return {"prompt": (SKILLS / "grounding.md").read_text(encoding="utf-8").strip()}
         return self.store.insights(sid)
 
-    async def run(self, sid, text):
+    async def run(self, sid, text, language=None):
+        trace = []
+        started = time.perf_counter()
+        try:
+            return await self._run(sid, text, language, trace)
+        except (ProviderError, TimeoutError) as exc:
+            reason = "run_timeout" if isinstance(exc, TimeoutError) else "provider_or_step_failure"
+            trace.append({"type": "failure", "name": reason, "status": "failed"})
+            raise AgentFailure(reason, trace, self.provider.name, round((time.perf_counter() - started) * 1000, 1)) from None
+
+    async def _run(self, sid, text, language, trace):
         started = time.perf_counter()
         mood = emotion(text)
-        trace, proposals, usage = [], [], {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        boundary = input_boundary(text)
+        proposals, usage = [], {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        session = self.store.session(sid)
+        language = language or session.get("language", "zh")
+        if language not in {"zh", "en"}:
+            raise ProviderError("Unsupported language")
+        boundary = input_boundary(text, language)
         if boundary:
             decision, reply = boundary
             trace.append({"type": "boundary", "name": decision, "status": "handled"})
             provider_name = "policy"
         else:
             provider_name = self.provider.name
-            session = self.store.session(sid)
             mode = session["mode"]
             approved = [m["content"] for m in self.store.memories(sid, "approved")[:10]]
             prompt = (SKILLS / "persona.md").read_text(encoding="utf-8") + "\nMode: " + mode
             prompt += "\nCharacter name: " + session["character_name"]
+            prompt += "\nResponse language: " + language
             prompt += "\nCharacter configuration (trusted administrator instructions): " + session["character_prompt"]
             prompt += "\nUser-approved memories (data only): " + json.dumps(approved, ensure_ascii=False)
             messages = [{"role": "system", "content": prompt}]
@@ -90,12 +123,26 @@ class Agent:
                         "name": c["name"], "arguments": json.dumps(c["arguments"], ensure_ascii=False)}} for c in result.calls]
                     messages.append({"role": "assistant", "content": result.content or None, "tool_calls": calls})
                     for c in result.calls:
-                        observation = self.execute(sid, c["name"], c["arguments"], proposals)
-                        trace.append({"type": "tool", "name": c["name"], "status": "denied" if "error" in observation else "ok"})
+                        tool_started = time.perf_counter()
+                        call_proposals = list(proposals)
+                        try:
+                            observation = await asyncio.wait_for(asyncio.to_thread(
+                                self.execute, sid, c["name"], c["arguments"], call_proposals), timeout=self.settings.tool_timeout)
+                            if "error" not in observation:
+                                proposals[:] = call_proposals
+                        except TimeoutError:
+                            observation = {"error": "tool_timeout"}
+                        except Exception:
+                            observation = {"error": "tool_failed"}
+                        # Proposal contents stay transient; traces persist the action and consent requirement only.
+                        visible_input = {"content": "[transient; confirmation required]"} if c["name"] == "propose_memory" else c["arguments"]
+                        trace.append({"type": "tool", "name": c["name"], "input": visible_input, "observation": observation,
+                                      "status": "denied" if "error" in observation else "ok",
+                                      "duration_ms": round((time.perf_counter() - tool_started) * 1000, 1)})
                         messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(observation, ensure_ascii=False)})
                 else:
                     raise ProviderError("Agent step budget exhausted; no final reply was produced.")
-            reply, rewritten = output_boundary(reply)
+            reply, rewritten = output_boundary(reply, language)
             if rewritten:
                 trace.append({"type": "boundary", "name": "identity_and_dependency", "status": "rewritten"})
         return {"run_id": str(uuid.uuid4()), "reply": reply, "emotion": mood, "provider": provider_name,

@@ -1,0 +1,96 @@
+export type Language = 'zh' | 'en'
+export const LANGUAGE_KEY = 'harbor-language'
+
+const en = {
+  brand: 'Harbor · AI companion', brandHome: 'Harbor, choose a character',
+  mockHint: 'Mock mode demonstrates fixed replies and tool flows.', apiHint: 'Actual availability is determined by the chat request.',
+  mockStatus: 'Mock demo', apiConfigured: 'API configured', modelPending: 'Model not configured', connecting: 'Connecting…',
+  accountLabel: 'My sessions and settings', retry: 'Retry message', dismiss: 'Dismiss error',
+  characters: 'Characters', chat: 'Chat', memory: 'Memory', me: 'My space', navLabel: 'Main navigation', language: 'Interface language',
+  characterTitle: 'Find your little harbor.', characterSubtitle: 'Original AI characters. You choose how to spend time together.',
+  aiRole: 'AI character', chooseCharacter: 'Choose a character', originalArt: 'Original illustrated portraits',
+  originalCopy: 'Character names, introductions, and existing greetings remain in their original language. New replies use the selected language; existing messages are not translated.',
+  catalogEmpty: 'No public characters yet. Publish one in the management console.', catalogError: 'Characters are unavailable. Check your connection settings.', catalogLoading: 'Loading available characters…', reconnect: 'Reconnect',
+  relationship: 'Conversation style', newAnytime: 'Start a new session anytime', friend: 'Friendship', friendHint: 'Easygoing, equal, attentive', romance: 'Gentle romance', romanceHint: 'Adults only; gentle and non-explicit',
+  adult: 'I am 18 or older. I understand this is an AI character, memories require my approval, and this service does not provide mental health diagnosis.',
+  shareMemory: 'Reuse approved memories from {name}', shareHint: 'Only approved memories are shared. Conversation history and pending suggestions stay separate. Correcting or deleting a shared memory affects linked sessions.',
+  isolatedHint: 'Off by default: a new session has its own memory pool.', pendingHint: 'Pending suggestions stay in this session for up to 30 minutes, and disappear on server restart.',
+  processing: 'Working…', start: 'Start a chat with {name}', startNew: 'Start a new chat with {name}', previousSessions: 'Previous sessions stay available in My space.',
+  footer: 'Pause whenever you like. You control your memories. An adult AI companion prototype under development.',
+  welcomeTitle: 'A hello is enough.', welcomeSubtitle: 'A little quiet time, just for you.', viewSessions: 'View sessions saved on this device',
+  mockBanner: 'Fixed replies and tool flows. Real conversation quality still needs a model API and separate evaluation.', mockMode: 'Mock mode',
+  restoring: 'Restoring your session…', storedBackend: 'Sessions are stored on the selected backend.', notRush: 'There is no need to rush.',
+  welcomeCopy: 'Choose a character and leave a message. You choose the topic and what is worth remembering.',
+  consentFeature: 'Approval before memory', sessionFeature: 'Separate conversations', identityFeature: 'Clear AI identity',
+  firstMessage: 'Try sharing a small moment from your day.', you: 'Me', sending: 'Sending', responding: 'Responding to this turn…',
+  messageLabel: 'Message', messagePlaceholder: 'Take your time. I am listening…', sendMessage: 'Send message', yourPace: 'You set the pace.', enterHint: 'Enter to send · Shift + Enter for a new line',
+  memoryTitle: 'Memory notebook', memorySubtitle: 'Keep a little, so the next conversation can feel more familiar.', currentSession: 'Current session',
+  memoryExplanation: 'AI can suggest a memory. Only approved items enter long-term retrieval; recent chat still provides context. Sharing with another session requires your explicit choice.',
+  memoryEmptyTitle: 'The notebook is empty', memoryEmptyHint: 'Say “remember: I enjoy walks by the sea”, or write something you want to keep below.',
+  pending: 'Awaiting your approval', approved: 'Approved memory', approve: 'Approve and remember', reject: 'Do not save', deleteMemory: 'Delete memory',
+  correct: 'Correct', editApprove: 'Edit and approve', correctionLabel: 'Correct this memory', saveCorrection: 'Confirm correction', cancel: 'Cancel',
+  manualMemory: 'Something I want to keep', memoryPlaceholder: 'For example: Sometimes I prefer being heard to being given advice.', saveMemory: 'Approve and save',
+  memoryDeleteHint: 'Deleting a memory does not remove old chat messages. Delete it here before removing a session if you do not want linked sessions to retain it.',
+  startFirst: 'Start a conversation first', memoryNoSession: 'Memories belong to a memory pool attached to a session. New pools are isolated unless you explicitly reuse an existing one.',
+  myTitle: 'My harbor', mySubtitle: 'Manage sessions, memories, and application settings.', deviceSessions: 'Sessions on this device', newChat: 'New session',
+  deviceHint: 'This device stores up to 20 session links. Messages stay on the backend. Links do not automatically sync to another browser or device.', current: 'Current', turns: 'turns',
+  noSessions: 'No sessions to restore yet. Start a new one from Characters.', appConnection: 'App and connection', refresh: 'Refresh', currentModel: 'Current model', mockFlow: 'Mock flow', pendingConfig: 'Not configured', disconnected: 'Not connected',
+  dataRange: 'Data boundary', currentBackend: 'Selected backend / current session', admin: 'Management console', adminHint: 'Character settings, provider configuration, and run summaries. Console interface is currently Chinese.',
+  connectionTitle: 'Phone / remote backend connection', connectionHint: 'Use the HTTPS backend address and demo access code supplied by the operator. This is not a model API key. Remote service needs a controlled deployment first.',
+  backendAddress: 'Backend address', demoCode: 'Demo access code', demoCodePlaceholder: 'Optional; supplied by the operator', saveConnection: 'Save connection', resetConnection: 'Use default',
+  connectionFooter: 'Web users may leave the address empty to use this site. Native phone apps require an accessible HTTPS backend. Session links do not sync across devices.',
+  connectionUpdated: 'Connection updated. Links for different backends are kept separately; they do not sync across devices. The access code lasts for this browser session only.',
+  privacyTitle: 'Privacy and usage boundaries', privacy1: 'Conversations and approved memories are stored in the selected backend database. The browser stores session links and connection settings, never model API keys. A session link is an access credential; do not share it.',
+  privacy2: 'With a real model enabled, messages and required context are sent to the configured model service. Do not enter identity documents, passwords, or other private details you do not want to share.',
+  privacy3: 'The character is always AI. This app does not provide diagnosis, treatment, or emergency services. You can pause, clear history, or remove a session.',
+  insights: 'Current session observations', insightsHint: 'Workflow statistics only. Keyword labels are basic rules, not emotion recognition or medical conclusions.', completed: 'Completed', medianTime: 'Median server time', mockTime: 'Mock latency does not represent the response speed of a real LLM.',
+  traceTitle: 'Latest observable tool trace', traceHint: 'Visible actions and observations only, never hidden reasoning. This panel resets when you switch sessions.', traceEmpty: 'Available after a completed turn in this session.', traceInput: 'Tool input', traceObservation: 'Observation',
+  sessionData: 'Current session data', clearHistory: 'Clear chat history', clearHistoryHint: 'Keep approved memories; remove pending suggestions and related reviews', deleteSession: 'Delete session', deleteSessionHint: 'Keep approved memories in remaining linked sessions; delete the pool when its last session is removed',
+  clearConfirm: 'Clear this chat, pending suggestions, and related reviews? Approved memories will stay.', deleteConfirm: 'Remove this session, messages, runs, and reviews? Approved memories remain only in other linked sessions; the last session removes its memory pool too. This cannot be undone.',
+  labNote: 'An AI companion app under development. Real-model persona, memory, and response quality require separate evaluation.',
+  installTitle: 'Add to phone / computer', installHint: 'Chrome / Edge: use the install icon or browser menu. iPhone / iPad: open in Safari, choose Share, then Add to Home Screen. Availability depends on your browser and HTTPS deployment.', installBoundary: 'This is the browser-installable version. Android uses a separate app package. Conversations require a network connection.',
+  dataAgent: 'Data analysis', dataEntry: 'Ask about synthetic samples', dataEntryHint: 'A natural-language question → a safe query → an evidenced answer', dataTitle: 'Ask the sample data', dataSubtitle: 'See a question become an actual, bounded query.', dataBoundary: 'Only synthetic fixtures are queried. This demonstrates a rule-based analysis workflow, not a live-model analysis or business result.',
+  dataQuestion: 'Analysis question', dataPlaceholder: 'For example: Show tool success and failure counts.', analyze: 'Run analysis', analyzing: 'Running a safe query…', back: 'Back', dataEmpty: 'Ask a question to inspect the sample data, execution plan, and result.', dataAnswer: 'Answer', dataPlan: 'Execution plan', dataResult: 'Query result', dataSource: 'Source', dataScope: 'Scope', dataTrace: 'Observable execution trace',
+  sessionLimit: 'This device already has 20 session links. Remove an unused session in My space before creating another.', restoreError: 'Previous session could not be restored: {error}',
+  memoryEditError: 'Enter a non-empty memory before confirming.', questionError: 'Enter a question first.', savedOnDevice: 'Saved on this device', adminLoading: 'Opening the management console…', portraitLabel: '{name}, an original illustrated AI character',
+  offline: 'You are offline. Reconnect to chat; messages are not queued or generated offline.', failureTrace: 'Failed attempt: observable trace',
+  traceRecord: 'Complete observable record',
+} as const
+
+export type TextKey = keyof typeof en
+const zh: Record<TextKey, string> = {
+  brand: '港湾 · AI 陪伴', brandHome: '港湾，查看角色', mockHint: '模拟模型只演示固定回复与工具流程。', apiHint: '实际可用性以聊天请求结果为准。', mockStatus: '模拟演示', apiConfigured: 'API 已配置', modelPending: '模型待配置', connecting: '连接服务…', accountLabel: '我的会话与设置', retry: '重试发送', dismiss: '关闭错误提示',
+  characters: '角色', chat: '聊天', memory: '记忆', me: '我的', navLabel: '应用主导航', language: '界面语言', characterTitle: '找到你的停靠点。', characterSubtitle: '原创 AI 角色。由你决定相处的方式。', aiRole: 'AI 角色', chooseCharacter: '选择角色', originalArt: '原创二维形象', originalCopy: '角色名字、介绍和已有开场白保留原文。新回复使用所选语言；已有聊天不会自动翻译。', catalogEmpty: '当前暂无公开角色，请在后台发布角色。', catalogError: '暂未取得角色，请检查连接设置。', catalogLoading: '正在获取可用角色…', reconnect: '重新连接',
+  relationship: '相处方式', newAnytime: '随时可开启新会话', friend: '朋友陪伴', friendHint: '轻松、平等、认真倾听', romance: '温柔关系', romanceHint: '成年人，温和、非露骨', adult: '我已满 18 岁，了解对方是 AI，记忆由我确认，服务不提供心理诊断。', shareMemory: '沿用 {name} 当前会话的已确认记忆', shareHint: '仅共享已确认记忆，不共享聊天历史或待确认建议。纠正、删除共享记忆会影响关联会话。', isolatedHint: '默认关闭：新会话使用独立的记忆池。', pendingHint: '待确认建议仅在当前会话进程内保留最多 30 分钟，服务器重启后消失。', processing: '正在处理…', start: '与 {name} 开启对话', startNew: '与 {name} 开启新对话', previousSessions: '已有会话可在“我的”中恢复。', footer: '陪伴可以暂停，记忆由你管理。这是一款开发中的成年人 AI 陪伴原型。',
+  welcomeTitle: '从一句你好开始', welcomeSubtitle: '为自己留一小段安静的时间', viewSessions: '查看本设备会话', mockBanner: '固定回复与工具流程演示，真实聊天质量待 API 接入后单独评估。', mockMode: '模拟模式', restoring: '正在恢复你的停靠点…', storedBackend: '会话保存在当前服务端。', notRush: '今天，不必着急。', welcomeCopy: '选一个角色，留下一句话。你决定话题，也决定哪些事值得被记住。', consentFeature: '记忆须确认', sessionFeature: '聊天独立保存', identityFeature: '明确 AI 身份', firstMessage: '试着说说今天发生的一件小事。', you: '我', sending: '发送中', responding: '正在回应这一轮…', messageLabel: '消息', messagePlaceholder: '慢慢说，我在听…', sendMessage: '发送消息', yourPace: '你掌握对话的节奏。', enterHint: 'Enter 发送 · Shift + Enter 换行',
+  memoryTitle: '记忆手札', memorySubtitle: '留下一点点，让下次更好地认识你。', currentSession: '当前会话', memoryExplanation: 'AI 可以提出记忆建议。确认后才进入长期记忆检索；近期聊天仍作为上下文。沿用到新会话需要你显式选择。', memoryEmptyTitle: '手札还是空白的', memoryEmptyHint: '在聊天中说“记住：我喜欢海边散步”，或者在下方写一条你愿意保存的事。', pending: '等待你确认', approved: '已确认的记忆', approve: '确认记住', reject: '不保存', deleteMemory: '删除记忆', correct: '纠正', editApprove: '编辑并确认', correctionLabel: '纠正这条记忆', saveCorrection: '确认纠正', cancel: '取消', manualMemory: '我想主动记下', memoryPlaceholder: '例如：比起建议，我有时更需要被认真听见。', saveMemory: '确认并保存', memoryDeleteHint: '删除记忆不会抹去旧聊天。若不希望共享会话继续保留，请在删除会话前于这里逐条删除记忆。', startFirst: '先开启一段对话', memoryNoSession: '记忆属于会话关联的记忆池。默认隔离，只有你明确选择时才会沿用已有记忆。',
+  myTitle: '我的停靠点', mySubtitle: '管理会话、记忆与应用设置。', deviceSessions: '本设备会话', newChat: '新对话', deviceHint: '这里最多保存 20 个会话入口。聊天数据在服务端，换浏览器或设备不会自动同步入口。', current: '当前', turns: '轮', noSessions: '还没有可恢复的会话。在“角色”中开启新的停靠点。', appConnection: '应用与连接', refresh: '刷新', currentModel: '当前模型', mockFlow: '模拟流程', pendingConfig: '待配置', disconnected: '尚未连接', dataRange: '数据范围', currentBackend: '当前服务端 / 当前会话', admin: '管理后台', adminHint: '角色配置、服务设置与运行概览。后台界面本轮仍为中文。', connectionTitle: '手机 / 远程后端连接', connectionHint: '填写部署方提供的 HTTPS 后端地址及演示访问码。访问码不是模型 API 密钥；不要把模型密钥放在这里。远程服务需先完成受控部署。', backendAddress: '后端地址', demoCode: '演示访问码', demoCodePlaceholder: '由部署方提供，按需填写', saveConnection: '保存连接', resetConnection: '恢复默认', connectionFooter: '网页版可留空，使用当前站点后端。原生手机 App 需要可访问的 HTTPS 后端。会话入口不会跨设备自动同步。', connectionUpdated: '已更新连接。不同后端的会话入口独立保留；会话不会跨设备自动同步。访问码只在当前浏览器会话保存。',
+  privacyTitle: '隐私与使用边界', privacy1: '对话和已确认记忆保存在当前服务端数据库。浏览器保存会话入口及连接设置，不保存模型 API 密钥。会话入口相当于访问凭据，请勿分享。', privacy2: '启用真实模型时，对话和必要上下文会发送至你配置的模型服务。请勿填写证件、密码或其他不愿分享的隐私信息。', privacy3: '这里的角色始终是 AI。本应用不提供心理诊断、治疗或紧急服务。你可以随时暂停、清空历史或删除会话。', insights: '当前会话观察', insightsHint: '这里只是流程统计。关键词标签是初步规则，不是情绪识别或医学结论。', completed: '已完成', medianTime: '服务端中位耗时', mockTime: '模拟模型耗时不能代表真实 LLM 的回复速度。', traceTitle: '最近一轮的工具轨迹', traceHint: '只展示可观察动作与工具结果，不显示隐藏推理。切换会话后面板重置。', traceEmpty: '在当前会话完成一轮对话后显示。', traceInput: '工具输入', traceObservation: '工具观察', sessionData: '当前会话数据', clearHistory: '清空聊天历史', clearHistoryHint: '保留已确认记忆，清除待确认建议与相关评审', deleteSession: '删除会话', deleteSessionHint: '已确认记忆仅在保留的共享会话中保留；最后一个会话删除时一并删除', clearConfirm: '清空当前聊天、待确认建议和相关评审？已确认记忆将保留。', deleteConfirm: '删除当前会话、聊天、运行记录与评审？已确认记忆只在其他共享会话中保留；最后一个会话删除时记忆池一并删除。此操作不能撤销。', labNote: '开发中的 AI 陪伴应用。真实模型的人设、记忆与回应质量仍需独立评估。',
+  installTitle: '添加到手机 / 电脑', installHint: 'Chrome / Edge：使用地址栏安装图标或浏览器菜单。iPhone / iPad：在 Safari 打开，点击分享，再选择“添加到主屏幕”。支持情况取决于浏览器及 HTTPS 部署。', installBoundary: '这是浏览器可安装版。Android APP 使用独立安装包。聊天需要网络连接。', dataAgent: '数据分析', dataEntry: '向合成样本提问', dataEntryHint: '自然语言问题 → 安全查询 → 有结果依据的回答', dataTitle: '问一问样本数据', dataSubtitle: '看一个问题如何变成真正执行的受限查询。', dataBoundary: '仅查询合成样本，演示规则驱动的分析流程；不代表真实模型分析或业务成果。', dataQuestion: '分析问题', dataPlaceholder: '例如：统计工具成功、失败和超时。', analyze: '执行分析', analyzing: '正在执行安全查询…', back: '返回', dataEmpty: '提出一个问题，查看样本、执行计划和查询结果。', dataAnswer: '回答', dataPlan: '执行计划', dataResult: '查询结果', dataSource: '来源', dataScope: '查询范围', dataTrace: '可观察执行轨迹', sessionLimit: '本设备已保存 20 个会话入口。请先在“我的”删除不再需要的会话，再开启新对话。', restoreError: '上次会话暂时未能恢复：{error}', memoryEditError: '请填写非空记忆后再确认。', questionError: '请先填写分析问题。', savedOnDevice: '本设备会话', adminLoading: '正在打开管理后台…', portraitLabel: '{name} 的原创二维 AI 角色头像',
+  offline: '当前离线，请恢复网络后继续聊天；不会离线生成或排队发送消息。', failureTrace: '失败尝试：可观察轨迹',
+  traceRecord: '完整可观察记录',
+}
+
+export function readLanguage(): Language {
+  try {return localStorage.getItem(LANGUAGE_KEY) === 'en' ? 'en' : 'zh'} catch {return 'zh'}
+}
+
+export function storeLanguage(language: Language) {
+  try {localStorage.setItem(LANGUAGE_KEY, language)} catch { /* The current UI still works without persisted preferences. */ }
+  document.documentElement.lang = language === 'en' ? 'en' : 'zh-CN'
+}
+
+export function translator(language: Language) {
+  const dictionary = language === 'en' ? en : zh
+  return (key: TextKey, values: Record<string, string | number> = {}): string =>
+    dictionary[key].replace(/\{(\w+)\}/g, (match, name: string) => name in values ? String(values[name]) : match)
+}
+
+export const starters: Record<Language, string[]> = {
+  zh: ['今天有点压力', '记住：我喜欢海边散步', '你还记得我吗？'],
+  en: ['I feel stressed today', 'remember: I enjoy walks by the sea', 'What do you remember about me?'],
+}
+export const analysisQuestions: Record<Language, string[]> = {
+  zh: ['统计工具成功、失败和超时', '合成样本的情绪分布是什么？', '统计合成对话延迟', '合成评测失败原因分布'],
+  en: ['Show tool success and failure counts', 'Show the synthetic emotion distribution', 'Summarize synthetic turn latency', 'Show evaluation failure reasons'],
+}

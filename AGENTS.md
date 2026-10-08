@@ -4,8 +4,10 @@ Use English for code, comments, commits, and development documentation. Product 
 
 - This is an adult companion prototype with a clearly disclosed AI identity.
 - Default to mock mode. Never silently fall back to mock after a real provider error.
-- Store model proposals only as pending records; do not use them as approved memories until the user explicitly approves them.
-- Scope every read and write to the current session. Keep raw conversations and credentials out of Git.
+- Keep unapproved model memory proposals in process memory only (30-minute lifetime, lost on restart); persist approved memories only after explicit user confirmation. Dialogue history is separate from structured memory.
+- Scope history and proposals to the current session. Approved memory can be shared only when a user explicitly creates a new session from a known source session handle. Default new sessions are isolated. Keep raw conversations and credentials out of Git.
+- Corrections and deletions affect the explicitly shared approved-memory space; deleting its last session also removes the orphaned space.
+- DataAgent uses clearly labeled synthetic fixtures through bounded query plans; never expose arbitrary SQL or private conversation analysis through the demo endpoint.
 - Trace actions and observations; never request or display hidden chain of thought.
 - Tool allowlists, bounded loops, and input validation belong in code, not only prompts.
 - Mock regression results are infrastructure evidence, not semantic quality or production success rates.

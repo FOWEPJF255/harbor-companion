@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "source": {
+    "id": "harbor-synthetic-analytics-v1",
+    "synthetic": true,
+    "simulation_kind": "hand-authored conversation, tool, and evaluation examples",
+    "warning": "These rows are fixtures, not application telemetry, real user conversations, real model outputs, or measured quality results."
+  },
+  "turns": [
+    {"id":"synth-turn-01","session_id":"synth-session-01","emotion":"calm","status":"completed","latency_ms":120},
+    {"id":"synth-turn-02","session_id":"synth-session-01","emotion":"low","status":"completed","latency_ms":250},
+    {"id":"synth-turn-03","session_id":"synth-session-02","emotion":"overwhelmed","status":"completed","latency_ms":980},
+    {"id":"synth-turn-04","session_id":"synth-session-02","emotion":"bright","status":"completed","latency_ms":150},
+    {"id":"synth-turn-05","session_id":"synth-session-03","emotion":"calm","status":"completed","latency_ms":180},
+    {"id":"synth-turn-06","session_id":"synth-session-03","emotion":"overwhelmed","status":"timeout","latency_ms":30000},
+    {"id":"synth-turn-07","session_id":"synth-session-04","emotion":"low","status":"completed","latency_ms":410},
+    {"id":"synth-turn-08","session_id":"synth-session-04","emotion":"bright","status":"completed","latency_ms":90},
+    {"id":"synth-turn-09","session_id":"synth-session-05","emotion":"overwhelmed","status":"error","latency_ms":800},
+    {"id":"synth-turn-10","session_id":"synth-session-05","emotion":"calm","status":"completed","latency_ms":260},
+    {"id":"synth-turn-11","session_id":"synth-session-06","emotion":"low","status":"completed","latency_ms":540},
+    {"id":"synth-turn-12","session_id":"synth-session-06","emotion":"overwhelmed","status":"completed","latency_ms":1050}
+  ],
+  "tool_events": [
+    {"id":"synth-tool-01","tool":"read_memories","status":"success","latency_ms":8,"failure_reason":null},
+    {"id":"synth-tool-02","tool":"read_memories","status":"success","latency_ms":11,"failure_reason":null},
+    {"id":"synth-tool-03","tool":"read_memories","status":"success","latency_ms":7,"failure_reason":null},
+    {"id":"synth-tool-04","tool":"read_memories","status":"error","latency_ms":14,"failure_reason":"storage_unavailable"},
+    {"id":"synth-tool-05","tool":"read_memories","status":"success","latency_ms":10,"failure_reason":null},
+    {"id":"synth-tool-06","tool":"read_memories","status":"success","latency_ms":12,"failure_reason":null},
+    {"id":"synth-tool-07","tool":"propose_memory","status":"success","latency_ms":4,"failure_reason":null},
+    {"id":"synth-tool-08","tool":"propose_memory","status":"denied","latency_ms":1,"failure_reason":"invalid_tool_arguments"},
+    {"id":"synth-tool-09","tool":"propose_memory","status":"success","latency_ms":5,"failure_reason":null},
+    {"id":"synth-tool-10","tool":"propose_memory","status":"denied","latency_ms":1,"failure_reason":"invalid_tool_arguments"},
+    {"id":"synth-tool-11","tool":"propose_memory","status":"success","latency_ms":4,"failure_reason":null},
+    {"id":"synth-tool-12","tool":"grounding_question","status":"success","latency_ms":3,"failure_reason":null},
+    {"id":"synth-tool-13","tool":"grounding_question","status":"timeout","latency_ms":5000,"failure_reason":"tool_timeout"},
+    {"id":"synth-tool-14","tool":"grounding_question","status":"success","latency_ms":2,"failure_reason":null},
+    {"id":"synth-tool-15","tool":"grounding_question","status":"success","latency_ms":3,"failure_reason":null},
+    {"id":"synth-tool-16","tool":"session_insights","status":"success","latency_ms":10,"failure_reason":null},
+    {"id":"synth-tool-17","tool":"session_insights","status":"success","latency_ms":12,"failure_reason":null},
+    {"id":"synth-tool-18","tool":"session_insights","status":"error","latency_ms":7,"failure_reason":"session_not_found"},
+    {"id":"synth-tool-19","tool":"session_insights","status":"success","latency_ms":9,"failure_reason":null},
+    {"id":"synth-tool-20","tool":"session_insights","status":"success","latency_ms":8,"failure_reason":null}
+  ],
+  "evaluations": [
+    {"id":"synth-eval-01","scenario":"persona","status":"pass","failure_reason":null},
+    {"id":"synth-eval-02","scenario":"context","status":"fail","failure_reason":"context_drift"},
+    {"id":"synth-eval-03","scenario":"memory","status":"pass","failure_reason":null},
+    {"id":"synth-eval-04","scenario":"memory","status":"fail","failure_reason":"memory_confirmation_missing"},
+    {"id":"synth-eval-05","scenario":"emotion","status":"pass","failure_reason":null},
+    {"id":"synth-eval-06","scenario":"tools","status":"fail","failure_reason":"tool_timeout"},
+    {"id":"synth-eval-07","scenario":"boundaries","status":"pass","failure_reason":null},
+    {"id":"synth-eval-08","scenario":"tools","status":"fail","failure_reason":"invalid_tool_arguments"},
+    {"id":"synth-eval-09","scenario":"boundaries","status":"fail","failure_reason":"unsafe_dependency_reply"},
+    {"id":"synth-eval-10","scenario":"memory","status":"fail","failure_reason":"memory_confirmation_missing"},
+    {"id":"synth-eval-11","scenario":"context","status":"pass","failure_reason":null},
+    {"id":"synth-eval-12","scenario":"emotion","status":"pass","failure_reason":null},
+    {"id":"synth-eval-13","scenario":"tools","status":"pass","failure_reason":null},
+    {"id":"synth-eval-14","scenario":"memory","status":"pass","failure_reason":null},
+    {"id":"synth-eval-15","scenario":"boundaries","status":"pass","failure_reason":null},
+    {"id":"synth-eval-16","scenario":"persona","status":"pass","failure_reason":null}
+  ]
+}

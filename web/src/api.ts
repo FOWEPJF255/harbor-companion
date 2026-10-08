@@ -5,7 +5,29 @@ const STORAGE_KEY = 'harbor-connection-v1'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {super(message); this.name = 'ApiError'; this.status = status}
+  trace: Array<Record<string, unknown>> = []
+  failureReason = ''
+  constructor(status: number, message: string) {super(localize(message)); this.name = 'ApiError'; this.status = status}
+}
+
+const englishMessages: Record<string, string> = {
+  '请输入完整的后端 HTTPS 地址。': 'Enter the full HTTPS backend address.',
+  '后端地址应使用 HTTPS，不能包含密钥、账号或查询参数。': 'Use HTTPS without credentials or query parameters.',
+  '手机 APP 需要手机可访问的后端地址；localhost 指向手机自身。': 'The phone needs a reachable backend; localhost refers to the phone itself.',
+  '演示访问码过长，请检查输入。': 'The demo access code is too long.',
+  '请先在“我的”配置手机可访问的 HTTPS 后端地址。': 'Configure a reachable HTTPS backend in Me first.',
+  '输入不符合要求，请检查各字段；管理员密码至少 12 位。': 'Check the input fields. Administrator passwords need at least 12 characters.',
+  '服务暂时不可用，请稍后重试。': 'Service unavailable. Please try again later.',
+  '连接等待超时，请重试。聊天重试会沿用原请求编号，避免重复保存。': 'Connection timed out. Retrying chat keeps the same request ID to prevent duplicate turns.',
+  '无法连接后端，请检查地址、网络和后端是否启动。': 'Cannot reach the backend. Check the address, network, and running service.',
+  '当前离线，请恢复网络后重试。消息没有在离线时排队发送。': 'You are offline. Reconnect and retry; messages have not been queued.',
+}
+
+function localize(message: string): string {
+  let english = false
+  try {english = localStorage.getItem('harbor-language') === 'en'} catch { /* Prefer Chinese if storage is unavailable. */ }
+  if (!english) return message
+  return englishMessages[message] || Object.entries(errors).find(([, translated]) => translated === message)?.[0] || message
 }
 
 function validateBase(value: string): string {
@@ -60,6 +82,10 @@ const errors: Record<string, string> = {
   'Character not found': '角色不存在。',
   'Character is not available': '这个角色已归档，请选择其他角色开启新会话。',
   'Memory not found': '这条记忆已不存在，请刷新后重试。',
+  'Memory source session not found': '共享记忆来源会话已不存在，请重新选择。',
+  'Request ID was already used for a different message': '这个请求编号已用于另一条消息，请重新发送。',
+  'Unsupported or unsafe analysis question; use synthetic demo topics only.': '暂不支持这个分析问题；请查询合成样本的情绪、工具结果、延迟或失败归因。',
+  'Synthetic analysis timed out; no private data was accessed.': '合成数据分析超时，没有访问私人会话数据。',
   'Model could not complete the turn. No mock fallback or half-turn was saved.': '模型未完成这一轮。请检查 API 配置或稍后重试；系统没有用模拟回复替代。',
   'Adult confirmation is required for this prototype.': '请确认已满 18 岁后再开始。',
   'Memory limit reached; remove older memories first.': '这个会话已达到记忆上限，请先整理旧记忆。',
@@ -84,7 +110,10 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, token
       const message = typeof detail.detail === 'string'
         ? (errors[detail.detail] || (response.status === 401 ? '管理员登录已失效，请重新登录。' : detail.detail))
         : '输入不符合要求，请检查各字段；管理员密码至少 12 位。'
-      throw new ApiError(response.status, message || '服务暂时不可用，请稍后重试。')
+      const error = new ApiError(response.status, message || '服务暂时不可用，请稍后重试。')
+      if (Array.isArray(detail.trace)) error.trace = detail.trace
+      if (typeof detail.failure_reason === 'string') error.failureReason = detail.failure_reason
+      throw error
     }
     return await response.json() as T
   } catch (issue) {

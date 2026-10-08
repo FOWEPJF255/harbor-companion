@@ -38,3 +38,17 @@ Do not claim live-model results or production behavior from these checks.
 - Model API, remote backend hosting, real-model quality, physical-phone operation, iOS packaging, and store publication remain pending.
 
 See [app delivery](app-delivery.md) for the artifact size, hash, download location, and precise scope.
+
+## Offline acceptance iteration, v0.3, 2026-10-09
+
+| Check | Observed result | Scope/source |
+| --- | --- | --- |
+| Final Python regression | 140 passed, 1 deprecation warning, 6.54 s | Original boundary tests plus acceptance, management, memory, upstream failure and DataAgent tests |
+| Expanded independent evaluator | 50/50 passed; live model calls 0 | [50 synthetic cases](../eval/framework-cases.json), [recorded detailed report](evidence/framework-v0.3-2026-10-09.json) |
+| Frontend compilation | TypeScript/Vite build succeeded | Chinese/English user UI, consent/correction, trace panels and synthetic analysis |
+| Local browser walkthrough | Approval → explicitly shared new chat → recall → correction → changed recall | Synthetic preference only; no semantic-quality assertion |
+| Mobile browser | 390 × 844 chat and data analysis opened; actual query/row-count trace visible | Browser breakpoint review, not physical Android evidence |
+
+Reproduction and failure examples: [evaluation](evaluation.md). Review findings/repairs: [iteration record](iteration-2026-10-09-v0.3.md). Current limits/next work: [CURRENT](CURRENT.md).
+
+The DataAgent fixture's hand-authored success/failure and latency values are separate from these actual test counts; do not report fixture numbers as observed application performance. The complete MVP remains in development until live-model conversation quality and device evidence are recorded.
