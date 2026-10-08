@@ -52,3 +52,7 @@ See [app delivery](app-delivery.md) for the artifact size, hash, download locati
 Reproduction and failure examples: [evaluation](evaluation.md). Review findings/repairs: [iteration record](iteration-2026-10-09-v0.3.md). Current limits/next work: [CURRENT](CURRENT.md).
 
 The DataAgent fixture's hand-authored success/failure and latency values are separate from these actual test counts; do not report fixture numbers as observed application performance. The complete MVP remains in development until live-model conversation quality and device evidence are recorded.
+
+Code snapshot: `398bfb0`. [GitHub framework checks](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843051697) completed successfully for that commit (backend tests/evaluator and frontend build). This is separate from Android compilation and real-model/device evidence.
+
+Android v0.3: [cloud build 37843054056](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843054056) completed successfully for `398bfb0`. Downloaded `data/releases/Harbor-0.3.0-debug.apk` is 4,307,956 bytes; SHA-256 matches the build checksum. See [packaging record](app-delivery.md) for the hash and limits. This does not verify installation or a physical phone.

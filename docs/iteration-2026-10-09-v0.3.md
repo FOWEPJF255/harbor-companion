@@ -33,6 +33,9 @@ These defects were identified by source review during the iteration; no pre-fix 
 - TypeScript/Vite production build succeeded. Main JS: 282.39 kB, gzip 89.81 kB; compilation size is not page-load or backend latency.
 - Browser: English switch; propose/approve; explicitly share a new conversation; recall; correct and recall changed content; 390 × 844 chat navigation; synthetic DataAgent answer and row-count/source execution trace opened.
 - Screenshots are local ignored artifacts under `reports/`: mobile-chat-v0.3.jpg, mobile-data-v0.3.jpg, mobile-data-trace-v0.3.jpg.
+- The browser language was restored to Chinese and the temporary viewport override removed after review. Chinese mobile and desktop captures are `mobile-chat-zh-v0.3.jpg` and `desktop-v0.3.jpg`.
+- Source commit `398bfb0` was saved to the existing GitHub repository. [Framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843051697) passed; no website or store was published.
+- Updated Android bundle: cloud packaging succeeded; `Harbor-0.3.0-debug.apk` downloaded, 4,307,956 bytes, SHA-256 checked against the compiler artifact. Native installation and real-model results remain unverified.
 - Automated deletion/isolation/timeout/provider-error tests used disposable synthetic databases. No owner's administrator password was chosen, and no real chat or credential entered the Git evidence.
 
 Remaining: [CURRENT](CURRENT.md). Android compiler/artifact status is separately recorded in [app delivery](app-delivery.md). Real empathy, persona stability, romantic quality, actual phone behavior and hosting remain unverified.

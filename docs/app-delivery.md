@@ -14,14 +14,26 @@ A browser-installable PWA is a convenient secondary entry. It is not presented a
 | PWA manifest, original icons, installation guidance | Source implemented | Serve over HTTPS and check on actual supported devices |
 | Public-asset service worker and offline explanation | Source implemented | Browser device review; no offline chat |
 | Capacitor Android project | Generated with Capacitor 8.5.3; cloud compilation succeeded | Reachable HTTPS backend and phone review |
-| Android APK | **Debug APK produced** by [cloud build](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37818826647) | Configure backend, install, and review on a physical phone |
+| Android APK | **v0.3 debug APK produced** by [cloud build](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843054056) | Configure backend, install, and review on a physical phone |
 | Android store release | **Not published** | Release signing, privacy information, store review |
 | iOS project / IPA | **Not generated / not produced** | macOS, Xcode, Apple signing, actual iPhone review |
 | Real model conversations | Existing provider integration remains pending credentials | Server-side API configuration and semantic evaluation |
 
-`cap add android` generated and synchronized the Android source project. GitHub run `37818826647` compiled the development APK from commit `8576f10` using Java 21 and Android SDK 36. No SDK was installed locally. No automated tests, emulator run, or physical-phone validation were performed in this iteration.
+`cap add android` generated and synchronized the original Android source project. The v0.2 packaging run compiled commit `8576f10`. The latest run compiles `398bfb0` using Java 21 and Android SDK 36; no SDK was installed locally. Android compilation and [framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843051697) are separate checks. No emulator or physical-phone validation has been performed.
 
-## Recorded APK
+## Latest v0.3 APK, 2026-10-09
+
+- Source: `398bfb0`; Android version name `0.3.0`, version code `2`.
+- Compiler: [Android debug run 37843054056](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843054056), successful (5m1s package job).
+- Local artifact: `data/releases/Harbor-0.3.0-debug.apk`, ignored by Git.
+- APK size: **4,307,956 bytes**.
+- SHA-256: `6269d588116243cab7fe3467f6c3b3c56b4eaeb1806cb3bbaa3d36d8fa2c3791`; locally computed hash matched the cloud checksum.
+- Artifact: `harbor-android-debug-2`, GitHub ID `11577759407`, retention 14 days. The downloaded local copy is preserved separately.
+- The bundle includes the updated bilingual UI, explicit memory sharing/correction and DataAgent interface. These features need the matching backend; the Python server is not bundled into Android.
+- No backend URL, model key, demo code or owner token was supplied to the compiler. Enter a phone-reachable HTTPS backend and demo code at runtime.
+- Packaging is not installation, native UX verification, release signing, store publication or real-model evidence. Cloud debug signing does not establish a stable release identity or guarantee an in-place upgrade from every earlier debug build; preserve session handles before any manual reinstall.
+
+## Historical v0.2 APK
 
 - Source: `8576f10` (app/management iteration).
 - Compiler evidence: [Android debug APK run](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37818826647), successful.

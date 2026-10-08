@@ -17,7 +17,7 @@ Updated: 2026-10-09, Asia/Shanghai. Source baseline: the owner's `APP需求与�
 | Bounded ReAct-style execution | Allowlist, validation, run/step/tool timeouts, tool errors, content-checked retries | Injected provider/tool errors, timeout, late-result, denied-action, collision checks | No hidden reasoning displayed; Python workers are not forcibly killed |
 | DataAgent | Natural-language selection of four safe plans; actual fixed-fixture aggregation | Independent arithmetic, rejection, provenance and API/tool scenarios; mobile query walkthrough | Deterministic planner, synthetic samples only; no private-data/LLM-quality claims |
 | Reproducible evidence | 50 bilingual application-contract cases with detailed output/mode/time/errors | 50/50 fixtures; 140 Python tests; frontend build | These counts are engineering checks, not semantic scores |
-| App and management | Capacitor Android project, authenticated single-owner console, local server | Management auth/logout/restart/snapshot/privacy checks; earlier v0.2 APK compiled | Latest APK evidence tracked in app-delivery; hosting and phone installation pending |
+| App and management | Capacitor Android project, authenticated single-owner console, local server | Management auth/logout/restart/snapshot/privacy checks; v0.3 APK compiled/downloaded/hash verified | Latest APK evidence tracked in app-delivery; hosting and phone installation pending |
 
 Recorded commands/results and source links: [evidence](evidence.md), [evaluation](evaluation.md), [memory](memory.md), [DataAgent](data-agent.md), [user interface](user-app.md), [app delivery](app-delivery.md).
 
