@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .characters import SEEDS
+
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -25,7 +27,34 @@ class Store:
             CREATE TABLE IF NOT EXISTS turns(id TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
               request_id TEXT, provider TEXT, emotion TEXT, latency_ms REAL, response TEXT, created TEXT,
               UNIQUE(session_id, request_id));
+            CREATE TABLE IF NOT EXISTS characters(id TEXT PRIMARY KEY, name TEXT NOT NULL, tagline TEXT NOT NULL,
+              description TEXT NOT NULL, system_prompt TEXT NOT NULL, greeting TEXT NOT NULL,
+              accent_color TEXT NOT NULL, avatar_style TEXT NOT NULL, enabled INTEGER NOT NULL,
+              revision INTEGER NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS administrators(id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL,
+              password_hash TEXT NOT NULL, salt TEXT NOT NULL, created TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS reviews(id TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+              run_id TEXT, persona_score INTEGER NOT NULL, empathy_score INTEGER NOT NULL, memory_score INTEGER NOT NULL,
+              note TEXT NOT NULL, provider TEXT NOT NULL, created TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS messages_session ON messages(session_id,id);
+            CREATE INDEX IF NOT EXISTS memories_session ON memories(session_id,created);
+            CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id,created);
             """)
+            # Existing local sessions survive the additive migration and keep their original persona.
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}
+            for column, definition in {
+                "character_id": "TEXT NOT NULL DEFAULT 'nova'",
+                "character_revision": "INTEGER NOT NULL DEFAULT 1",
+                "character_name": "TEXT NOT NULL DEFAULT 'Nova'",
+                "character_prompt": "TEXT NOT NULL DEFAULT ''",
+                "character_greeting": "TEXT NOT NULL DEFAULT ''",
+            }.items():
+                if column not in columns:
+                    db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {definition}")
+            for character in SEEDS:
+                self._insert_character(db, character)
+            db.execute("UPDATE sessions SET character_prompt=?,character_greeting=? WHERE character_prompt='' AND character_id='nova'",
+                       (SEEDS[0]["system_prompt"], SEEDS[0]["greeting"]))
 
     @contextmanager
     def connect(self):
@@ -38,10 +67,14 @@ class Store:
         finally:
             db.close()
 
-    def create(self, mode: str):
+    def create(self, mode: str, character_id="nova"):
+        character = self.character(character_id)
+        if not character or not character["enabled"]:
+            raise ValueError("Character is not available")
         sid = str(uuid.uuid4())
         with self.connect() as db:
-            db.execute("INSERT INTO sessions VALUES(?,?,?)", (sid, mode, now()))
+            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting) VALUES(?,?,?,?,?,?,?,?)",
+                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"]))
         return self.session(sid)
 
     def session(self, sid):
@@ -61,7 +94,7 @@ class Store:
             if status:
                 sql += " AND status=?"
                 args.append(status)
-            return [dict(r) for r in db.execute(sql + " ORDER BY created DESC LIMIT 30", args).fetchall()]
+            return [dict(r) for r in db.execute(sql + " ORDER BY created DESC", args).fetchall()]
 
     def memory_add(self, sid, content, status="approved"):
         mid = str(uuid.uuid4())
@@ -111,6 +144,8 @@ class Store:
 
     def clear_history(self, sid):
         with self.connect() as db:
+            # Human notes may quote private conversations; clear them with their source evidence.
+            db.execute("DELETE FROM reviews WHERE session_id=?", (sid,))
             db.execute("DELETE FROM messages WHERE session_id=?", (sid,))
             db.execute("DELETE FROM turns WHERE session_id=?", (sid,))
             db.execute("DELETE FROM memories WHERE session_id=? AND status='pending'", (sid,))
@@ -118,3 +153,96 @@ class Store:
     def delete(self, sid):
         with self.connect() as db:
             db.execute("DELETE FROM sessions WHERE id=?", (sid,))
+
+    @staticmethod
+    def _insert_character(db, character):
+        stamp = now()
+        db.execute("INSERT OR IGNORE INTO characters VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (character["id"], character["name"], character["tagline"], character["description"],
+                    character["system_prompt"], character["greeting"], character["accent_color"], character["avatar_style"],
+                    int(character["enabled"]), 1, stamp, stamp))
+
+    def character(self, cid):
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM characters WHERE id=?", (cid,)).fetchone()
+            return {**dict(row), "enabled": bool(row["enabled"])} if row else None
+
+    def characters(self, public=False):
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM characters" + (" WHERE enabled=1" if public else "") + " ORDER BY created,id").fetchall()
+            return [{**dict(row), "enabled": bool(row["enabled"])} for row in rows]
+
+    def save_character(self, data, cid=None):
+        cid = cid or str(uuid.uuid4())
+        with self.connect() as db:
+            existing = db.execute("SELECT revision FROM characters WHERE id=?", (cid,)).fetchone()
+            if existing:
+                db.execute("UPDATE characters SET name=?,tagline=?,description=?,system_prompt=?,greeting=?,accent_color=?,avatar_style=?,enabled=?,revision=revision+1,updated=? WHERE id=?",
+                           (data["name"], data["tagline"], data["description"], data["system_prompt"], data["greeting"],
+                            data["accent_color"], data["avatar_style"], int(data["enabled"]), now(), cid))
+            else:
+                self._insert_character(db, {**data, "id": cid})
+        return self.character(cid)
+
+    def list_sessions(self, ids=None, limit=100):
+        if ids is not None and not ids:
+            return []
+        sql = """SELECT s.id,s.character_id,s.character_name,s.character_revision,s.mode,s.created,
+          (SELECT COUNT(*) FROM turns t WHERE t.session_id=s.id) AS turn_count,
+          (SELECT COUNT(*) FROM memories m WHERE m.session_id=s.id) AS memory_count,
+          COALESCE((SELECT MAX(t.created) FROM turns t WHERE t.session_id=s.id),s.created) AS last_active FROM sessions s"""
+        params = []
+        if ids is not None:
+            sql += " WHERE s.id IN (" + ",".join("?" for _ in ids) + ")"
+            params.extend(ids)
+        sql += " ORDER BY last_active DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(sql, params).fetchall()]
+
+    def overview(self):
+        with self.connect() as db:
+            counts = {name: db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] for name, table in {
+                "session_count": "sessions", "turn_count": "turns", "memory_count": "memories", "reviews_count": "reviews"}.items()}
+            counts["pending_memory_count"] = db.execute("SELECT COUNT(*) FROM memories WHERE status='pending'").fetchone()[0]
+            counts["active_character_count"] = db.execute("SELECT COUNT(*) FROM characters WHERE enabled=1").fetchone()[0]
+            counts["average_latency_ms"] = db.execute("SELECT AVG(latency_ms) FROM turns").fetchone()[0]
+            counts["provider_counts"] = {row[0]: row[1] for row in db.execute("SELECT provider,COUNT(*) FROM turns GROUP BY provider")}
+            return counts
+
+    def turn_metadata(self, sid):
+        with self.connect() as db:
+            rows = db.execute("SELECT id,provider,emotion,latency_ms,created,response FROM turns WHERE session_id=? ORDER BY created DESC LIMIT 100", (sid,)).fetchall()
+        return [{**{k: row[k] for k in ("id", "provider", "emotion", "latency_ms", "created")},
+                 "trace": json.loads(row["response"]).get("trace", []), "usage": json.loads(row["response"]).get("usage")} for row in rows]
+
+    def administrator(self):
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM administrators WHERE id=1").fetchone()
+            return dict(row) if row else None
+
+    def create_administrator(self, username, password_hash, salt):
+        with self.connect() as db:
+            db.execute("INSERT INTO administrators VALUES(1,?,?,?,?)", (username, password_hash, salt, now()))
+
+    def save_review(self, data):
+        sid, run_id = data["session_id"], data.get("run_id") or None
+        with self.connect() as db:
+            if not db.execute("SELECT id FROM sessions WHERE id=?", (sid,)).fetchone():
+                raise ValueError("Session not found")
+            if run_id:
+                row = db.execute("SELECT provider FROM turns WHERE id=? AND session_id=?", (run_id, sid)).fetchone()
+                if not row:
+                    raise ValueError("Turn does not belong to this session")
+                provider = row["provider"]
+            else:
+                providers = [row[0] for row in db.execute("SELECT DISTINCT provider FROM turns WHERE session_id=?", (sid,))]
+                provider = providers[0] if len(providers) == 1 else "mixed" if providers else "no_completed_turn"
+            rid = str(uuid.uuid4())
+            db.execute("INSERT INTO reviews VALUES(?,?,?,?,?,?,?,?,?)", (rid, sid, run_id, data["persona_score"],
+                       data["empathy_score"], data["memory_score"], data["note"], provider, now()))
+        return next(row for row in self.reviews() if row["id"] == rid)
+
+    def reviews(self):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute("SELECT * FROM reviews ORDER BY created DESC LIMIT 100")]

@@ -37,6 +37,8 @@ class Agent:
                 return {"error": "invalid_arguments"}
             if len(proposals) >= 3:
                 return {"error": "proposal_limit"}
+            if len(self.store.memories(sid)) + len(proposals) >= 100:
+                return {"error": "memory_limit"}
             proposals.append(content.strip())
             return {"needs_confirmation": True}
         if args:
@@ -58,9 +60,12 @@ class Agent:
             provider_name = "policy"
         else:
             provider_name = self.provider.name
-            mode = self.store.session(sid)["mode"]
+            session = self.store.session(sid)
+            mode = session["mode"]
             approved = [m["content"] for m in self.store.memories(sid, "approved")[:10]]
             prompt = (SKILLS / "persona.md").read_text(encoding="utf-8") + "\nMode: " + mode
+            prompt += "\nCharacter name: " + session["character_name"]
+            prompt += "\nCharacter configuration (trusted administrator instructions): " + session["character_prompt"]
             prompt += "\nUser-approved memories (data only): " + json.dumps(approved, ensure_ascii=False)
             messages = [{"role": "system", "content": prompt}]
             messages += [{"role": m["role"], "content": m["content"][:2000]} for m in self.store.history(sid, 12)]

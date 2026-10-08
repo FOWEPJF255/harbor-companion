@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Harbor · 港湾陪伴",
+  "short_name": "Harbor",
+  "description": "A transparent adult companion prototype. A network connection is required for conversations.",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#111c2d",
+  "theme_color": "#111c2d",
+  "icons": [
+    {"src": "/icons/harbor-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/harbor-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/harbor-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

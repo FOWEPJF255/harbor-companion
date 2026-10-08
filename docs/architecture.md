@@ -2,7 +2,12 @@
 
 ```mermaid
 flowchart LR
-  UI[React chat and character UI] --> API[Local FastAPI API]
+  UI[Responsive React / PWA / Android UI] --> API[FastAPI API]
+  Admin[Authenticated management UI] --> Management[Admin API / short-lived tokens]
+  Management --> Characters[Versioned characters]
+  Management --> Reviews[Human review annotations]
+  Characters --> DB
+  Reviews --> DB
   API --> Gate[Adult confirmation and session scope]
   Gate --> Loop[Bounded action-observation Harness]
   Loop --> Provider[Mock or compatible model adapter]
@@ -36,6 +41,14 @@ Memory is scoped to a single local session. It persists across browser refresh a
 The original message can still be present in recent conversation context before memory approval. Consent controls long-term memory retrieval, not whether the model can read a message the user just sent.
 
 The `skills/` files are lightweight prompt/resource modules loaded by this application. They do not implement dynamic Agent Skills discovery or a portable `SKILL.md` package protocol.
+
+## App and management extension
+
+The mobile UI uses four pages; the desktop UI uses the same backend and a wider layout. Capacitor bundles the presentation assets into an Android project. PWA installation is a separate browser surface, not proof of an APK or store release.
+
+Each session snapshots the selected character name, prompt, greeting, and revision. The management plane edits the next revision without rewriting prior session personas. Raw conversations are fetched only after an authenticated administrator explicitly opens a session detail; overview and list endpoints return aggregates/summaries.
+
+The backend retains a local default. Exact remote host/origin configuration requires an additional demo access code, while management requires a separate signed Bearer token. Bootstrap is disabled in remote mode. The code and platform/deployment limits are described in [management](management.md), [device connection](device-connection.md), and [app delivery](app-delivery.md).
 
 ## Model and tools
 

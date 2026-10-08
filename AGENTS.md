@@ -9,4 +9,9 @@ Use English for code, comments, commits, and development documentation. Product 
 - Trace actions and observations; never request or display hidden chain of thought.
 - Tool allowlists, bounded loops, and input validation belong in code, not only prompts.
 - Mock regression results are infrastructure evidence, not semantic quality or production success rates.
-- Do not connect external messaging, payments, account access, or background outreach.
+- Do not connect external messaging, payments, external account access, or background outreach.
+- The management console is a separate authenticated plane. Never return stored password hashes or model keys.
+- Keep character name/prompt/greeting snapshots stable for existing sessions. Published changes affect new sessions.
+- Phone builds must contain a public backend address only, never an API key or demo/admin token.
+- A generated Android project, a compiled APK, a phone review, and store publication are separate evidence stages.
+- Cache public presentation assets only; never cache private API data or queue offline chat sends.

@@ -1,11 +1,18 @@
 import asyncio
+import secrets
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, Field
 
+from .admin import admin_router
 from .agent import Agent
+from .characters import public_character
 from .config import ROOT, Settings
 from .providers import CompatibleProvider, MockProvider, ProviderError
 from .store import Store
@@ -14,6 +21,7 @@ from .store import Store
 class NewSession(BaseModel):
     adult_confirmed: bool
     mode: Literal["friend", "gentle_romance"] = "friend"
+    character_id: str = Field(default="nova", min_length=1, max_length=80)
 
 
 class ChatInput(BaseModel):
@@ -29,26 +37,53 @@ def create_app(settings=None, provider=None):
     settings = settings or Settings.from_env()
     if settings.provider not in {"mock", "openai_compatible"}:
         raise ValueError("Unknown HARBOR_PROVIDER")
+    if settings.allowed_hosts and len(settings.client_token) < 32:
+        raise ValueError("Additional hosts require a HARBOR_CLIENT_TOKEN of at least 32 characters.")
+    if any("/" in host or "*" in host or ":" in host for host in settings.allowed_hosts):
+        raise ValueError("HARBOR_ALLOWED_HOSTS must contain exact hostnames, without protocols or wildcards.")
+    for origin in settings.allowed_origins:
+        parsed = urlsplit(origin)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
+            raise ValueError("Additional browser origins must be exact HTTPS origins, without paths or credentials.")
     store = Store(settings.db_path)
     provider = provider or (MockProvider() if settings.provider == "mock" else CompatibleProvider(settings))
     agent = Agent(store, provider, settings)
     locks = {}
-    app = FastAPI(title="HarborCompanion", version="0.1.0")
+    app = FastAPI(title="HarborCompanion", version="0.2.0")
     app.state.store = store
 
     @app.middleware("http")
     async def local_browser_guard(request: Request, call_next):
-        # No cookies or public auth yet. Reject browser requests from unrelated origins.
+        # Default remains loopback. Explicit remote configuration also requires a demo access code.
         origin = request.headers.get("origin")
-        host = request.headers.get("host", "")
-        allowed = {"http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8765", "http://localhost:8765"}
+        host = request.url.hostname
+        allowed = {"http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8765", "http://localhost:8765",
+                   "https://localhost", "capacitor://localhost", *settings.allowed_origins}
         if request.url.path.startswith("/api/") and origin and origin not in allowed:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"detail": "Origin not allowed for local demo."}, status_code=403)
-        if request.url.path.startswith("/api/") and host.split(":")[0] not in {"127.0.0.1", "localhost", "testserver"}:
-            from fastapi.responses import JSONResponse
-            return JSONResponse({"detail": "This prototype is restricted to localhost."}, status_code=403)
-        return await call_next(request)
+            return JSONResponse({"detail": "Origin not allowed for this demo."}, status_code=403, headers={"Cache-Control": "no-store"})
+        if request.url.path.startswith("/api/") and host not in {"127.0.0.1", "localhost", "testserver", *settings.allowed_hosts}:
+            return JSONResponse({"detail": "This prototype is restricted to configured hosts."}, status_code=403, headers={"Cache-Control": "no-store"})
+        public_paths = {"/api/status", "/api/characters", "/api/admin/setup-status"}
+        if settings.client_token and request.url.path.startswith("/api/") and request.url.path not in public_paths:
+            supplied = request.headers.get("x-harbor-access", "")
+            if not secrets.compare_digest(supplied, settings.client_token):
+                return JSONResponse({"detail": "Demo access code is required."}, status_code=403, headers={"Cache-Control": "no-store"})
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        if request.url.path.startswith("/api/") or request.url.path.startswith("/admin"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    app.add_middleware(CORSMiddleware,
+                       allow_origins=["http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8765", "http://localhost:8765",
+                                      "https://localhost", "capacitor://localhost", *settings.allowed_origins],
+                       allow_credentials=False, allow_methods=["GET", "POST", "PUT", "DELETE"],
+                       allow_headers=["Content-Type", "Authorization", "X-Harbor-Access"])
+    app.include_router(admin_router(store, settings))
+
+    def session_payload(session):
+        return {key: value for key, value in session.items() if key != "character_prompt"}
 
     def require(sid):
         session = store.session(sid)
@@ -63,17 +98,33 @@ def create_app(settings=None, provider=None):
     async def status():
         ready = settings.provider == "mock" or bool(settings.api_base and settings.api_key and settings.model)
         return {"provider": settings.provider, "configured": ready, "model": settings.model if settings.provider != "mock" else None,
-                "stage": "framework prototype", "quality_evidence": "pending real-model evaluation"}
+                "stage": "app + management prototype", "quality_evidence": "pending real-model evaluation",
+                "access_code_required": bool(settings.client_token)}
+
+    @app.get("/api/characters")
+    async def characters():
+        return {"items": [public_character(item) for item in store.characters(public=True)]}
+
+    @app.get("/api/sessions")
+    async def sessions(ids: str = ""):
+        # Clients can enumerate only capability handles already present on their device.
+        handles = list(dict.fromkeys(x for x in ids.split(",") if x))
+        if len(handles) > 20 or any(len(handle) > 80 for handle in handles):
+            raise HTTPException(422, "Too many session handles")
+        return {"items": store.list_sessions(handles, limit=20)}
 
     @app.post("/api/sessions")
     async def new_session(body: NewSession):
         if not body.adult_confirmed:
             raise HTTPException(422, "Adult confirmation is required for this prototype.")
-        return store.create(body.mode)
+        try:
+            return session_payload(store.create(body.mode, body.character_id))
+        except ValueError:
+            raise HTTPException(404, "Character is not available") from None
 
     @app.get("/api/sessions/{sid}")
     async def read_session(sid: str):
-        return {**require(sid), "messages": store.history(sid, 100), "memories": store.memories(sid), "insights": store.insights(sid)}
+        return {**session_payload(require(sid)), "messages": store.history(sid, 100), "memories": store.memories(sid), "insights": store.insights(sid)}
 
     @app.post("/api/sessions/{sid}/chat")
     async def chat(sid: str, body: ChatInput):
@@ -98,6 +149,8 @@ def create_app(settings=None, provider=None):
             content = body.content.strip()
             if not content:
                 raise HTTPException(422, "Memory must not be blank")
+            if len(store.memories(sid)) >= 100:
+                raise HTTPException(422, "Memory limit reached; remove older memories first.")
             return {"id": store.memory_add(sid, content), "status": "approved"}
 
     @app.post("/api/sessions/{sid}/memories/{mid}/{action}")
@@ -124,7 +177,15 @@ def create_app(settings=None, provider=None):
 
     dist = ROOT / "web" / "dist"
     if dist.exists():
-        app.mount("/", StaticFiles(directory=dist, html=True), name="web")
+        class AppStaticFiles(StaticFiles):
+            async def get_response(self, path, scope):
+                try:
+                    return await super().get_response(path, scope)
+                except StarletteHTTPException as exc:
+                    if exc.status_code == 404 and path.rstrip("/") == "admin":
+                        return await super().get_response("index.html", scope)
+                    raise
+        app.mount("/", AppStaticFiles(directory=dist, html=True), name="web")
     return app
 
 

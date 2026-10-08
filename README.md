@@ -2,13 +2,15 @@
 
 An inspectable character companion prototype: persona, multi-turn context, consent-based memory, bounded tool use, and evidence you can replay.
 
-**Stage: framework prototype.** The default mock provider uses deterministic replies to exercise infrastructure. Real conversational empathy, context quality, and relationship consistency are **not evaluated yet**. A server-side OpenAI-compatible adapter is ready for later credentials; no live API call has been made during the initial build.
+**Stage: app and management prototype, v0.2.** The default mock provider uses deterministic replies to exercise infrastructure. Real conversational empathy, context quality, and relationship consistency are **not evaluated yet**. A server-side OpenAI-compatible adapter is ready for later credentials; no live API call has been made during development.
 
 ## Product
 
-Nova is a disclosed AI character for adults. Choose friendly companionship or gentle, nonsexual romantic conversation. This is a local web prototype, not a messaging bot. An original lightweight 2D avatar accompanies the conversation. Voice, Live2D, public hosting, and background outreach are outside this first milestone.
+Choose an original, disclosed AI character for adults: Nova, Qinghe, or Muxing. Friendly companionship and gentle, nonsexual romantic conversation are available. The same responsive UI serves desktop browsers, installable PWA surfaces, and a Capacitor Android native-container project. Original lightweight 2D avatars accompany conversations. Voice, Live2D, public hosting, and background outreach remain deferred.
 
-The first milestone demonstrates:
+**Android project, PWA, and APK are different deliverables.** Read [app delivery](docs/app-delivery.md) for the actual packaging state. No iOS binary or store publication is claimed.
+
+The current prototype implements:
 
 - A React/TypeScript chat UI and Python/FastAPI backend.
 - Recent-turn context and an editable persona Skill.
@@ -17,6 +19,10 @@ The first milestone demonstrates:
 - Session-scoped SQLite storage, idempotent retries, and full session deletion.
 - A read-only session analytics tool, with clearly labeled heuristic mood data.
 - Observable tool traces, synthetic regression fixtures, and a real-model quality rubric.
+- Mobile app navigation, keyboard/safe-area handling, and per-device session entry management.
+- A login-protected management console for characters, versioned prompts, private session inspection, and human quality annotations.
+- Character snapshots: edited prompts apply to new conversations without silently changing existing ones.
+- Public-assets-only PWA support and an Android packaging workflow; no offline chat simulation or API cache.
 
 ## Start on Windows
 
@@ -30,7 +36,24 @@ cd C:\1AAAProject\AI\Project\HarborCompanion
 
 Open **http://127.0.0.1:8765/**. The default provider is `mock`; no API key is required.
 
+Open **http://127.0.0.1:8765/admin** to create the local administrator and manage the app. Choose your own password; none is preset. Initialize locally before enabling remote hosts. See [management](docs/management.md).
+
 For development, run the backend on port 8765 and `npm run dev` inside `web/` in another terminal. Vite proxies `/api` and serves on http://127.0.0.1:5173.
+
+## Phone application
+
+The UI has four mobile pages: characters, chat, memory, and personal settings. Desktop keeps a three-column layout. A phone needs a reachable HTTPS backend; `localhost` refers to the phone itself.
+
+```powershell
+# Prepare an Android project with a public backend address, not a model key.
+.\scripts\android.ps1 -BackendUrl https://YOUR_BACKEND -Mode prepare
+# After the JDK/Android SDK are configured, compile a development APK.
+.\scripts\android.ps1 -BackendUrl https://YOUR_BACKEND -Mode debug
+```
+
+The manually triggered **Android debug APK** GitHub workflow provides an alternative compiler environment. Its optional backend URL can be empty; the app then lets the owner enter a reachable HTTPS backend at runtime. Credentials are never bundled into the APK. This development package is not a signed store release or a physical-device verification.
+
+See [device connection](docs/device-connection.md) for backend address, demo access code, allowed origins, session scope, and deployment prerequisites.
 
 ## Later: connect a model
 
@@ -66,6 +89,8 @@ Synthetic framework results do not measure model empathy, clinical accuracy, pro
 server/harbor/       API, storage, provider, tools, policies
 server/harbor/skills/ persona instructions and conversational resources
 web/                React UI with original SVG avatar
+web/src/admin/      authenticated management UI, loaded separately
+mobile/android/     native Android container project
 eval/               synthetic fixtures and pending model-quality scenarios
 tests/              isolation, consent, failures, budgets, protocol tests
 scripts/            local setup, start, and evaluation
@@ -80,10 +105,13 @@ docs/               positioning, architecture, references, roadmap, evidence
 - [Two-week milestone plan](docs/roadmap.md)
 - [Demo walkthrough](docs/demo.md)
 - [Initial evidence](docs/evidence.md)
+- [Management console](docs/management.md)
+- [App/PWA delivery](docs/app-delivery.md)
+- [Phone and desktop connection](docs/device-connection.md)
 
 ## Deployment boundary
 
-The initial API accepts localhost requests only. Session UUIDs are local capability handles, not production authentication. Do not expose this server publicly. Public hosting needs authentication, rate limits, consent handling, retention controls, HTTPS, and a deployment-specific security review. A future static frontend may use Cloudflare Pages, with a separately hosted authenticated backend; this repository is not currently deployed.
+The default API accepts localhost requests only. Explicit remote demo configuration requires exact host/origin allowlists and a long demo access code; initialize the administrator before switching to that mode. Session UUIDs and a shared demo code are not production account authentication. Public launch still needs user authentication, rate limits, consent handling, retention controls, HTTPS, and an operational plan. A future static frontend may use Cloudflare Pages with a separately hosted authenticated backend; this repository is not currently deployed.
 
 ## License
 

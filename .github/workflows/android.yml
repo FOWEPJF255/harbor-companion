@@ -1,0 +1,121 @@
+name: Android debug APK
+
+# An explicit packaging job. It does not run tests or publish to an app store.
+on:
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: 'Optional public HTTPS backend base URL. Leave empty to configure it inside the app. Never enter a token or key.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-debug-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            mobile/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            mobile/android/**/*.gradle*
+            mobile/android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Validate optional public backend address
+        env:
+          BACKEND_URL: ${{ inputs.backend_url }}
+        run: |
+          node --input-type=module <<'NODE'
+          const value = (process.env.BACKEND_URL || '').trim();
+          if (value) {
+            let url;
+            try { url = new URL(value); } catch { throw new Error('Backend URL must be an absolute HTTPS URL.'); }
+            const loopback = url.hostname === 'localhost' || url.hostname.endsWith('.localhost')
+              || /^127\./.test(url.hostname) || url.hostname === '[::1]';
+            if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || loopback) {
+              throw new Error('Use a phone-reachable HTTPS backend base URL without credentials, query, or fragment.');
+            }
+          }
+          NODE
+
+      - name: Confirm hosted Android SDK
+        run: |
+          if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME/platforms/android-36" ]; then
+            printf '%s\n' 'The hosted runner must provide Android SDK platform 36.' >&2
+            exit 1
+          fi
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build bundled frontend
+        working-directory: web
+        env:
+          # A public address only. Authentication is entered at runtime inside the app.
+          VITE_API_BASE_URL: ${{ inputs.backend_url }}
+        run: npm run build
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+
+      - name: Synchronize Android project
+        working-directory: mobile
+        run: npx cap sync android
+
+      - name: Compile development APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Record APK checksum
+        working-directory: mobile/android/app/build/outputs/apk/debug
+        run: sha256sum app-debug.apk > app-debug.apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: harbor-android-debug-${{ github.run_number }}
+          path: |
+            mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            mobile/android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Explain artifact scope
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Harbor Android development package
+
+          The artifact contains a debug APK and its SHA-256 checksum. This job compiles the application; it does not run tests, validate real-model quality, check a physical phone, sign a store release, or publish an application.
+
+          If no public backend URL was provided, configure the HTTPS backend address and demo access code in the app's connection settings. No provider key or user/admin token is compiled into this package.
+          SUMMARY

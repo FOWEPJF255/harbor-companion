@@ -2,6 +2,8 @@
 
 Date: 2026-10-09. Stage: local framework; model quality pending.
 
+The initial boundary/fixture results below describe the original `4a4328c` framework milestone. They have not been rerun for the app/management extension. Current app packaging evidence is tracked separately in [app delivery](app-delivery.md).
+
 ## Local framework evidence
 
 Environment: Windows, Python 3.14.3, Node.js 24.18.0. Recorded on 2026-10-09 in Asia/Shanghai.

@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
@@ -22,6 +23,8 @@ class MockProvider:
 
     async def complete(self, messages, tools):
         user = next(m["content"] for m in reversed(messages) if m["role"] == "user")
+        match = re.search(r"^Character name: (.{1,40})$", messages[0]["content"], re.MULTILINE)
+        character_name = match.group(1) if match else "Nova"
         if messages[-1]["role"] == "tool":
             observation = json.loads(messages[-1]["content"])
             if "memories" in observation:
@@ -47,7 +50,7 @@ class MockProvider:
                 return Completion(content="听起来是值得开心的一刻！你最想把哪个瞬间留下来？")
             if any(x in user for x in ["孤独", "难过"]):
                 return Completion(content="听起来你现在有些难受。你愿意让我先听你说，还是一起找一个小小的下一步？")
-            return Completion(content="我是 Nova，一个 AI 陪伴角色。这个模式使用固定演示回复；接入模型后才会生成真正的多轮对话。你想从今天发生的一件事聊起吗？")
+            return Completion(content=f"我是 {character_name}，一个 AI 陪伴角色。这个模式使用固定演示回复；接入模型后才会生成真正的多轮对话。你想从今天发生的一件事聊起吗？")
         return Completion(calls=[{"id": "mock-call", **call}])
 
 
@@ -60,7 +63,11 @@ class CompatibleProvider:
 
     async def complete(self, messages, tools):
         s = self.settings
-        base = urlsplit(s.api_base)
+        try:
+            base = urlsplit(s.api_base)
+            _ = base.port
+        except ValueError:
+            raise ProviderError("Provider base URL is invalid.") from None
         allowed_url = bool(base.hostname) and (base.scheme == "https" or
             (base.scheme == "http" and base.hostname in {"localhost", "127.0.0.1"}))
         if not allowed_url or base.username or base.password or base.query or base.fragment or not s.model:
