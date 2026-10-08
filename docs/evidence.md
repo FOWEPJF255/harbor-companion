@@ -27,3 +27,14 @@ Do not claim live-model results or production behavior from these checks.
 - Conversations and metrics: synthetic/local only.
 - Public hosting: not deployed.
 - Companion quality: pending real-model transcripts and human review.
+
+## App/management iteration, 2026-10-09
+
+- Shared client and separate lazy-loaded management UI: TypeScript/Vite production build completed.
+- Python modules: syntax compilation completed. The existing automated tests/fixtures were not rerun for this iteration, and no new tests were added.
+- Source review: client/backend contracts, old-session snapshots, access boundaries, review cleanup, and timeout behavior were reviewed. This is review evidence, not a test result.
+- Browser preview: desktop layout, 390 × 844 mobile chat/navigation, settings, and administrator initialization were opened. No owner's administrator password was chosen on their behalf.
+- Android: [manual cloud packaging](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37818826647) succeeded for commit `8576f10`; downloaded APK checksum matched the build output.
+- Model API, remote backend hosting, real-model quality, physical-phone operation, iOS packaging, and store publication remain pending.
+
+See [app delivery](app-delivery.md) for the artifact size, hash, download location, and precise scope.

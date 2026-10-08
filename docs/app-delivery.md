@@ -13,13 +13,26 @@ A browser-installable PWA is a convenient secondary entry. It is not presented a
 | Responsive React interface | Shared frontend source | Continue device-specific interaction review |
 | PWA manifest, original icons, installation guidance | Source implemented | Serve over HTTPS and check on actual supported devices |
 | Public-asset service worker and offline explanation | Source implemented | Browser device review; no offline chat |
-| Capacitor Android project | Generated with Capacitor 8.5.3 | JDK, Android SDK, backend URL, packaging, phone review |
-| Android APK | **Not produced** | Build debug APK, then install and review |
+| Capacitor Android project | Generated with Capacitor 8.5.3; cloud compilation succeeded | Reachable HTTPS backend and phone review |
+| Android APK | **Debug APK produced** by [cloud build](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37818826647) | Configure backend, install, and review on a physical phone |
 | Android store release | **Not published** | Release signing, privacy information, store review |
 | iOS project / IPA | **Not generated / not produced** | macOS, Xcode, Apple signing, actual iPhone review |
 | Real model conversations | Existing provider integration remains pending credentials | Server-side API configuration and semantic evaluation |
 
-`cap add android` generated and synchronized the Android source project. No SDK was installed and no Gradle compilation, automated tests, emulator run, or physical-phone validation was performed for this delivery.
+`cap add android` generated and synchronized the Android source project. GitHub run `37818826647` compiled the development APK from commit `8576f10` using Java 21 and Android SDK 36. No SDK was installed locally. No automated tests, emulator run, or physical-phone validation were performed in this iteration.
+
+## Recorded APK
+
+- Source: `8576f10` (app/management iteration).
+- Compiler evidence: [Android debug APK run](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37818826647), successful.
+- Local artifact: `data/releases/Harbor-0.2.0-debug.apk`, ignored by Git.
+- APK size: 4,296,748 bytes.
+- SHA-256: `7fe91fd083e1b2f310b6917ebfa8c6c51491e4df6b41bd0ab4976bf6bdb99e51`, matched the cloud-produced checksum after download.
+- Public backend URL: not compiled in; configure the reachable HTTPS backend in the app at runtime.
+- Signing: development/debug only. No store release, iOS IPA, installation on a phone, or real-model quality result is implied.
+- The GitHub artifact is retained for 14 days; the downloaded local copy is preserved separately. Re-run the packaging workflow to regenerate it.
+
+A 390px browser preview reviewed the mobile layout and administration initialization surface. It is not a physical-device or native-runtime review. The desktop browser layout was also opened.
 
 ## Layout, keyboard, and safe areas
 
@@ -76,7 +89,7 @@ The assets currently assume hosting at the domain root. A future deployment unde
 
 Official Capacitor 8 requirements are Node 22+, Android Studio 2025.2.1+, and an Android SDK. The generated project currently uses minimum SDK 24, compile/target SDK 36, Java 21 source compatibility, Android Gradle Plugin 8.13.0, and Gradle 8.14.3. The IDE's bundled JDK is the preferred starting point. See [Capacitor environment setup](https://capacitorjs.com/docs/getting-started/environment-setup).
 
-At implementation time, `java` was not available on PATH and neither the default Android Studio folder nor the default user Android SDK folder was found. This is a limited local check; it does not prove that no alternative installation exists.
+At the local implementation check, `java` was not available on PATH and neither the default Android Studio folder nor the default user Android SDK folder was found. This is a limited local check; it does not prove that no alternative installation exists.
 
 Once an authenticated HTTPS backend is available:
 
@@ -122,7 +135,7 @@ Build the shared frontend with the intended HTTPS backend before syncing. Config
 
 1. Host an authenticated HTTPS backend; verify the intended user and administrator boundaries.
 2. Provide real provider credentials on the server and assess conversation quality with evidence.
-3. Build and install the APK; document actual device and version when reporting results.
+3. Install the compiled APK and document the actual device/version; compilation alone does not verify its runtime.
 4. Confirm keyboard/composer behavior, memory controls, deletion, provider errors, and offline recovery.
 5. Decide distribution, retention policy, privacy notices, signing, and updates before a wider release.
 
