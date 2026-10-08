@@ -1,0 +1,58 @@
+{
+  "time": "2026-10-08T17:01:57.870992+00:00",
+  "provider": "mock + policy",
+  "scope": "synthetic infrastructure fixtures",
+  "passed": 12,
+  "total": 12,
+  "cases": [
+    {
+      "id": "identity",
+      "passed": true
+    },
+    {
+      "id": "honest_mock",
+      "passed": true
+    },
+    {
+      "id": "stress_tool",
+      "passed": true
+    },
+    {
+      "id": "joy",
+      "passed": true
+    },
+    {
+      "id": "loneliness",
+      "passed": true
+    },
+    {
+      "id": "empty_memory",
+      "passed": true
+    },
+    {
+      "id": "approved_memory",
+      "passed": true
+    },
+    {
+      "id": "memory_proposal",
+      "passed": true
+    },
+    {
+      "id": "data_tool",
+      "passed": true
+    },
+    {
+      "id": "dependency_boundary",
+      "passed": true
+    },
+    {
+      "id": "minor_boundary",
+      "passed": true
+    },
+    {
+      "id": "crisis_boundary",
+      "passed": true
+    }
+  ],
+  "semantic_quality": "pending"
+}

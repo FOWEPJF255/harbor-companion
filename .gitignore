@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+data/
+reports/
+web/node_modules/
+web/dist/
+*.log
+*.sqlite*
+.DS_Store

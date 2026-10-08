@@ -1,0 +1,1 @@
+"""HarborCompanion application package."""
