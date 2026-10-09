@@ -13,7 +13,9 @@ from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+
+from .profiles import CharacterProfile
 
 
 class Credentials(BaseModel):
@@ -30,6 +32,7 @@ class CharacterInput(BaseModel):
     accent_color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     avatar_style: Literal["nova", "sage", "ember"] = "nova"
     enabled: bool = True
+    profile: CharacterProfile | None = None
 
     @field_validator("name", "tagline", "description", "system_prompt", "greeting")
     @classmethod
@@ -47,13 +50,57 @@ class CharacterInput(BaseModel):
         return value
 
 
+class ReviewEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    naturalness: str = Field(min_length=1, max_length=1000)
+    persona: str = Field(min_length=1, max_length=1000)
+    continuity: str = Field(min_length=1, max_length=1000)
+    credibility: str = Field(min_length=1, max_length=1000)
+    empathy: str = Field(min_length=1, max_length=1000)
+    boundary: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("*")
+    @classmethod
+    def concrete(cls, value):
+        if not value.strip():
+            raise ValueError("Each review dimension needs an observed quotation or concrete evidence")
+        return value.strip()
+
+
+class RestoreCharacterInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    revision: StrictInt = Field(ge=1)
+
+
 class ReviewInput(BaseModel):
     session_id: str = Field(min_length=1, max_length=80)
     run_id: str | None = Field(default=None, max_length=80)
-    persona_score: int = Field(ge=1, le=5)
-    empathy_score: int = Field(ge=1, le=5)
-    memory_score: int = Field(ge=1, le=5)
+    schema_version: Literal[1, 2] = 1
+    persona_score: StrictInt = Field(ge=1, le=5)
+    empathy_score: StrictInt = Field(ge=1, le=5)
+    memory_score: StrictInt | None = Field(default=None, ge=1, le=5)
+    naturalness_score: StrictInt | None = Field(default=None, ge=1, le=5)
+    continuity_score: StrictInt | None = Field(default=None, ge=1, le=5)
+    credibility_score: StrictInt | None = Field(default=None, ge=1, le=5)
+    boundary_score: StrictInt | None = Field(default=None, ge=1, le=5)
+    evidence: ReviewEvidence | None = None
     note: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def explicit_version(cls, value):
+        if type(value) is not int:
+            raise ValueError("Review schema version must be an integer")
+        return value
+
+    @model_validator(mode="after")
+    def version_contract(self):
+        extra_scores = (self.naturalness_score, self.continuity_score, self.credibility_score, self.boundary_score)
+        if self.schema_version == 2 and (any(score is None for score in extra_scores) or self.evidence is None):
+            raise ValueError("Version 2 reviews require all six scores and their evidence")
+        if self.schema_version == 1 and (self.memory_score is None or any(score is not None for score in extra_scores) or self.evidence is not None):
+            raise ValueError("Version 1 reviews require the original three scores only")
+        return self
 
     @field_validator("note")
     @classmethod
@@ -199,6 +246,21 @@ def admin_router(store, settings, user_auth=None, budgets=None):
         if not store.character(cid):
             raise HTTPException(404, "Character not found")
         return store.save_character(body.model_dump(), cid)
+
+    @router.get("/characters/{cid}/revisions", dependencies=[Depends(auth.require)])
+    async def character_history(cid: str):
+        if not store.character(cid):
+            raise HTTPException(404, "Character not found")
+        return {"items": store.character_revisions(cid)}
+
+    @router.post("/characters/{cid}/restore", dependencies=[Depends(auth.require)])
+    async def restore_character(cid: str, body: RestoreCharacterInput):
+        if not store.character(cid):
+            raise HTTPException(404, "Character not found")
+        try:
+            return store.restore_character(cid, body.revision)
+        except ValueError:
+            raise HTTPException(404, "Character revision not found") from None
 
     @router.get("/sessions", dependencies=[Depends(auth.require)])
     async def sessions():

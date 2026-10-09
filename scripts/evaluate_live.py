@@ -42,7 +42,7 @@ def validate_settings(settings):
         raise ValueError("Configure an official model: deepseek-flash or deepseek-v4-pro.")
     if not settings.api_key or not settings.api_key.strip():
         raise ValueError("A server-side HARBOR_API_KEY is required.")
-    return replace(settings, timeout=TIMEOUT_SECONDS, max_steps=MAX_STEPS,
+    return replace(settings, timeout=TIMEOUT_SECONDS, max_steps=MAX_STEPS, max_output_tokens=600,
                    tool_timeout=min(settings.tool_timeout, 3))
 
 

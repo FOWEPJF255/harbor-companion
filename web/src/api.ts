@@ -20,6 +20,8 @@ const englishMessages: Record<string, string> = {
   '请先在“我的”配置手机可访问的 HTTPS 后端地址。': 'Configure a reachable HTTPS backend in Me first.',
   '输入不符合要求，请检查各字段；管理员密码至少 12 位。': 'Check the input fields. Administrator passwords need at least 12 characters.',
   '输入不符合要求，请检查各字段。': 'Check the input fields and try again.',
+  '角色字段不符合要求。档案年龄需为 18–120 岁，六个分区的中文和英文各需 1–2000 字。': 'Check the character fields. Profile age must be 18–120, with 1–2000 characters in each of the six sections in both languages.',
+  '评审字段不符合要求。六维分数需为 1–5，每维需 1–1000 字证据原句，并填写具体评审说明。': 'Check the review fields: six scores from 1–5, an evidence quotation of 1–1000 characters for each, and a concrete review note.',
   '服务暂时不可用，请稍后重试。': 'Service unavailable. Please try again later.',
   '连接等待超时，请重试。聊天重试会沿用原请求编号，避免重复保存。': 'Connection timed out. Retrying chat keeps the same request ID to prevent duplicate turns.',
   '无法连接后端，请检查地址、网络和后端是否启动。': 'Cannot reach the backend. Check the address, network, and running service.',
@@ -105,6 +107,7 @@ const errors: Record<string, string> = {
   'This prototype is restricted to configured hosts.': '当前域名未加入后端允许列表。',
   'Session not found': '会话不存在，可能已在另一端删除。',
   'Character not found': '角色不存在。',
+  'Character revision not found': '这个角色历史版本不存在，请刷新版本列表。',
   'Character is not available': '这个角色已归档，请选择其他角色开启新会话。',
   'Memory not found': '这条记忆已不存在，请刷新后重试。',
   'Memory source session not found': '共享记忆来源会话已不存在，请重新选择。',
@@ -146,7 +149,9 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, token
       const detail = await response.json().catch(() => ({detail: ''}))
       const message = typeof detail.detail === 'string'
         ? (errors[detail.detail] || (response.status === 401 ? path.startsWith('/admin') ? '管理员登录已失效，请重新登录。' : '用户登录已失效，请重新登录。' : detail.detail))
-        : path.startsWith('/admin') ? '输入不符合要求，请检查各字段；管理员密码至少 12 位。' : '输入不符合要求，请检查各字段。'
+        : path.startsWith('/admin/characters') ? '角色字段不符合要求。档案年龄需为 18–120 岁，六个分区的中文和英文各需 1–2000 字。'
+          : path.startsWith('/admin/reviews') ? '评审字段不符合要求。六维分数需为 1–5，每维需 1–1000 字证据原句，并填写具体评审说明。'
+            : path.startsWith('/admin') ? '输入不符合要求，请检查各字段；管理员密码至少 12 位。' : '输入不符合要求，请检查各字段。'
       const error = new ApiError(response.status, message || '服务暂时不可用，请稍后重试。')
       if (Array.isArray(detail.trace)) error.trace = detail.trace
       if (typeof detail.failure_reason === 'string') error.failureReason = detail.failure_reason

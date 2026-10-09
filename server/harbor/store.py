@@ -10,7 +10,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .characters import SEEDS
+from .characters import LEGACY_SEED_PRESENTATION, LEGACY_SEED_PROMPTS, PRESENTATION, SEEDS, public_character
+from .profiles import SEED_PROFILES, SEED_PROMPTS, validate_profile
 from .user_auth import UserAuth
 
 
@@ -59,6 +60,7 @@ class Store:
               target_id TEXT,metadata TEXT NOT NULL,created TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS audit_created ON audit_events(created);
             """)
+            db.execute("BEGIN IMMEDIATE")
             # Existing local sessions survive the additive migration and keep their original persona.
             columns = {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}
             for column, definition in {
@@ -71,15 +73,33 @@ class Store:
                 "language": "TEXT NOT NULL DEFAULT 'zh'",
                 "owner_user_id": "TEXT REFERENCES users(id)",
                 "review_access_allowed": "INTEGER NOT NULL DEFAULT 0",
+                "character_profile": "TEXT",
             }.items():
                 if column not in columns:
                     db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {definition}")
             if "owner_user_id" not in {row["name"] for row in db.execute("PRAGMA table_info(memory_spaces)")}:
                 db.execute("ALTER TABLE memory_spaces ADD COLUMN owner_user_id TEXT REFERENCES users(id)")
+            profile_added = "profile" not in {row["name"] for row in db.execute("PRAGMA table_info(characters)")}
+            if profile_added:
+                db.execute("ALTER TABLE characters ADD COLUMN profile TEXT")
+            db.execute("""CREATE TABLE IF NOT EXISTS character_revisions(
+                character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+                revision INTEGER NOT NULL,snapshot TEXT NOT NULL,created TEXT NOT NULL,
+                PRIMARY KEY(character_id,revision))""")
+            self._migrate_reviews(db)
+            from .context import ContextBuilder
+            ContextBuilder.ensure_schema(db)
             for character in SEEDS:
                 self._insert_character(db, character)
-            db.execute("UPDATE sessions SET character_prompt=?,character_greeting=? WHERE character_prompt='' AND character_id='nova'",
-                       (SEEDS[0]["system_prompt"], SEEDS[0]["greeting"]))
+            for current in db.execute("SELECT * FROM characters").fetchall():
+                self._record_character_revision(db, current)
+                if profile_added and current["id"] in SEED_PROFILES and current["profile"] is None:
+                    prompt = SEED_PROMPTS[current["id"]] if current["system_prompt"] == LEGACY_SEED_PROMPTS[current["id"]] else current["system_prompt"]
+                    presentation = {key: PRESENTATION[current["id"]][key] if current[key] == LEGACY_SEED_PRESENTATION[current["id"]][key] else current[key]
+                                    for key in ("tagline", "description", "greeting")}
+                    db.execute("UPDATE characters SET profile=?,system_prompt=?,tagline=?,description=?,greeting=?,revision=revision+1,updated=? WHERE id=?",
+                               (json.dumps(SEED_PROFILES[current["id"]], ensure_ascii=False), prompt, presentation["tagline"], presentation["description"], presentation["greeting"], now(), current["id"]))
+                    self._record_character_revision(db, db.execute("SELECT * FROM characters WHERE id=?", (current["id"],)).fetchone())
             # One-way additive migration: isolate each legacy session, preserve approved facts only.
             for row in db.execute("SELECT id FROM sessions WHERE memory_scope IS NULL").fetchall():
                 scope = str(uuid.uuid4())
@@ -99,6 +119,40 @@ class Store:
                     (SELECT u.id FROM users u WHERE u.id=audit_events.target_id),
                     (SELECT s.owner_user_id FROM sessions s WHERE s.id=audit_events.target_id))""")
             db.execute("CREATE INDEX IF NOT EXISTS audit_subject ON audit_events(subject_user_id)")
+
+    @staticmethod
+    def _migrate_reviews(db):
+        columns = {row["name"]: row for row in db.execute("PRAGMA table_info(reviews)")}
+        additions = {"schema_version": "INTEGER NOT NULL DEFAULT 1", "naturalness_score": "INTEGER",
+                     "continuity_score": "INTEGER", "credibility_score": "INTEGER", "boundary_score": "INTEGER", "evidence": "TEXT"}
+        if columns["memory_score"]["notnull"]:
+            # Null is the only honest value for a v2 dimension that was not scored.
+            db.execute("""CREATE TABLE reviews_v06(
+                id TEXT PRIMARY KEY,session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+                run_id TEXT,persona_score INTEGER NOT NULL,empathy_score INTEGER NOT NULL,memory_score INTEGER,
+                note TEXT NOT NULL,provider TEXT NOT NULL,created TEXT NOT NULL,
+                schema_version INTEGER NOT NULL DEFAULT 1,naturalness_score INTEGER,continuity_score INTEGER,
+                credibility_score INTEGER,boundary_score INTEGER,evidence TEXT)""")
+            original = ("id", "session_id", "run_id", "persona_score", "empathy_score", "memory_score", "note", "provider", "created")
+            retained = original + tuple(key for key in additions if key in columns)
+            names = ",".join(retained)
+            db.execute(f"INSERT INTO reviews_v06({names}) SELECT {names} FROM reviews")
+            db.execute("DROP TABLE reviews")
+            db.execute("ALTER TABLE reviews_v06 RENAME TO reviews")
+        else:
+            for key, definition in additions.items():
+                if key not in columns:
+                    db.execute(f"ALTER TABLE reviews ADD COLUMN {key} {definition}")
+
+    @staticmethod
+    def _character_dict(row):
+        return {**dict(row), "enabled": bool(row["enabled"]), "profile": json.loads(row["profile"]) if row["profile"] else None}
+
+    @classmethod
+    def _record_character_revision(cls, db, row):
+        snapshot = cls._character_dict(row)
+        db.execute("INSERT OR IGNORE INTO character_revisions(character_id,revision,snapshot,created) VALUES(?,?,?,?)",
+                   (row["id"], row["revision"], json.dumps(snapshot, ensure_ascii=False), row["updated"]))
 
     @contextmanager
     def connect(self):
@@ -129,14 +183,15 @@ class Store:
             else:
                 scope = str(uuid.uuid4())
                 db.execute("INSERT INTO memory_spaces(id,owner_user_id) VALUES(?,?)", (scope, owner_user_id))
-            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting,memory_scope,language,owner_user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"], scope, language, owner_user_id))
+            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting,memory_scope,language,owner_user_id,character_profile) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"], scope, language, owner_user_id,
+                        json.dumps(character["profile"], ensure_ascii=False) if character["profile"] is not None else None))
         return self.session(sid)
 
     def session(self, sid):
         with self.connect() as db:
             row = db.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
-            return dict(row) if row else None
+            return {**dict(row), "character_profile": json.loads(row["character_profile"]) if row["character_profile"] else None} if row else None
 
     def history(self, sid, limit=24):
         with self.connect() as db:
@@ -373,6 +428,7 @@ class Store:
             db.execute("DELETE FROM reviews WHERE session_id=?", (sid,))
             db.execute("DELETE FROM messages WHERE session_id=?", (sid,))
             db.execute("DELETE FROM turns WHERE session_id=?", (sid,))
+            db.execute("DELETE FROM session_summaries WHERE session_id=?", (sid,))
         with self._pending_lock:
             self._pending = {mid: p for mid, p in self._pending.items() if p["session_id"] != sid}
 
@@ -388,32 +444,81 @@ class Store:
     @staticmethod
     def _insert_character(db, character):
         stamp = now()
-        db.execute("INSERT OR IGNORE INTO characters VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        profile = validate_profile(character["profile"]) if character.get("profile") is not None else None
+        db.execute("INSERT OR IGNORE INTO characters(id,name,tagline,description,system_prompt,greeting,accent_color,avatar_style,enabled,revision,created,updated,profile) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (character["id"], character["name"], character["tagline"], character["description"],
                     character["system_prompt"], character["greeting"], character["accent_color"], character["avatar_style"],
-                    int(character["enabled"]), 1, stamp, stamp))
+                    int(character["enabled"]), 1, stamp, stamp, json.dumps(profile, ensure_ascii=False) if profile is not None else None))
 
     def character(self, cid):
         with self.connect() as db:
             row = db.execute("SELECT * FROM characters WHERE id=?", (cid,)).fetchone()
-            return {**dict(row), "enabled": bool(row["enabled"])} if row else None
+            return self._character_dict(row) if row else None
 
     def characters(self, public=False):
         with self.connect() as db:
             rows = db.execute("SELECT * FROM characters" + (" WHERE enabled=1" if public else "") + " ORDER BY created,id").fetchall()
-            return [{**dict(row), "enabled": bool(row["enabled"])} for row in rows]
+            characters = [self._character_dict(row) for row in rows]
+            return [public_character(character) for character in characters] if public else characters
 
-    def save_character(self, data, cid=None):
+    def save_character(self, data, cid=None, *, preserve_profile=True):
         cid = cid or str(uuid.uuid4())
         with self.connect() as db:
-            existing = db.execute("SELECT revision FROM characters WHERE id=?", (cid,)).fetchone()
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute("SELECT * FROM characters WHERE id=?", (cid,)).fetchone()
+            profile = data.get("profile")
+            if profile is None and existing and preserve_profile:
+                profile = json.loads(existing["profile"]) if existing["profile"] else None
+            profile = validate_profile(profile) if profile is not None else None
             if existing:
-                db.execute("UPDATE characters SET name=?,tagline=?,description=?,system_prompt=?,greeting=?,accent_color=?,avatar_style=?,enabled=?,revision=revision+1,updated=? WHERE id=?",
+                self._record_character_revision(db, existing)
+                latest = db.execute("SELECT MAX(revision) FROM character_revisions WHERE character_id=?", (cid,)).fetchone()[0]
+                revision = max(existing["revision"], latest or 0) + 1
+                db.execute("UPDATE characters SET name=?,tagline=?,description=?,system_prompt=?,greeting=?,accent_color=?,avatar_style=?,enabled=?,revision=?,updated=?,profile=? WHERE id=?",
                            (data["name"], data["tagline"], data["description"], data["system_prompt"], data["greeting"],
-                            data["accent_color"], data["avatar_style"], int(data["enabled"]), now(), cid))
+                            data["accent_color"], data["avatar_style"], int(data["enabled"]), revision, now(),
+                            json.dumps(profile, ensure_ascii=False) if profile is not None else None, cid))
             else:
-                self._insert_character(db, {**data, "id": cid})
+                self._insert_character(db, {**data, "profile": profile, "id": cid})
+            self._record_character_revision(db, db.execute("SELECT * FROM characters WHERE id=?", (cid,)).fetchone())
         return self.character(cid)
+
+    @staticmethod
+    def _profile_envelope(character_id, revision, name, profile):
+        return {"character_id": character_id, "revision": revision, "name": name,
+                "profile": profile, "legacy_profile": profile is None}
+
+    def character_profile(self, cid, revision=None):
+        if revision is None:
+            current = self.character(cid)
+            return self._profile_envelope(cid, current["revision"], current["name"], current["profile"]) if current else None
+        with self.connect() as db:
+            row = db.execute("SELECT snapshot FROM character_revisions WHERE character_id=? AND revision=?", (cid, revision)).fetchone()
+        if not row:
+            return None
+        saved = json.loads(row["snapshot"])
+        return self._profile_envelope(cid, revision, saved["name"], saved.get("profile"))
+
+    def session_profile(self, sid):
+        session = self.session(sid)
+        return self._profile_envelope(session["character_id"], session["character_revision"], session["character_name"], session["character_profile"]) if session else None
+
+    def character_revisions(self, cid):
+        with self.connect() as db:
+            rows = db.execute("SELECT revision,snapshot,created FROM character_revisions WHERE character_id=? ORDER BY revision DESC", (cid,)).fetchall()
+        result = []
+        for row in rows:
+            saved = json.loads(row["snapshot"])
+            result.append({**self._profile_envelope(cid, row["revision"], saved["name"], saved.get("profile")), "created": row["created"],
+                           **{key: saved[key] for key in ("enabled", "tagline", "description", "greeting")}})
+        return result
+
+    def restore_character(self, cid, revision):
+        with self.connect() as db:
+            row = db.execute("SELECT snapshot FROM character_revisions WHERE character_id=? AND revision=?", (cid, revision)).fetchone()
+        if not row:
+            raise ValueError("Character revision not found")
+        return self.save_character(json.loads(row["snapshot"]), cid, preserve_profile=False)
 
     def list_sessions(self, ids=None, limit=100):
         if ids is not None and not ids:
@@ -458,6 +563,24 @@ class Store:
             db.execute("INSERT INTO administrators VALUES(1,?,?,?,?)", (username, password_hash, salt, now()))
 
     def save_review(self, data):
+        if not isinstance(data.get("note"), str) or not 1 <= len(data["note"].strip()) <= 2000:
+            raise ValueError("A concrete review note is required")
+        data = {**data, "note": data["note"].strip()}
+        version = data.get("schema_version", 1)
+        six = ("naturalness_score", "persona_score", "continuity_score", "credibility_score", "empathy_score", "boundary_score")
+        required = six if version == 2 else ("persona_score", "empathy_score", "memory_score")
+        if type(version) is not int or version not in {1, 2} or any(type(data.get(key)) is not int or not 1 <= data[key] <= 5 for key in required):
+            raise ValueError("Review input does not match its schema version")
+        evidence = data.get("evidence")
+        keys = {key.removesuffix("_score") for key in six}
+        if version == 2:
+            if (not isinstance(evidence, dict) or set(evidence) != keys
+                    or any(not isinstance(value, str) or not 1 <= len(value.strip()) <= 1000 for value in evidence.values())):
+                raise ValueError("Version 2 reviews require evidence for every dimension")
+            if data.get("memory_score") is not None and (type(data["memory_score"]) is not int or not 1 <= data["memory_score"] <= 5):
+                raise ValueError("Invalid legacy memory score")
+        elif evidence is not None or any(data.get(key) is not None for key in six if key not in {"persona_score", "empathy_score"}):
+            raise ValueError("Version 1 reviews require the original three scores only")
         sid, run_id = data["session_id"], data.get("run_id") or None
         with self.connect() as db:
             if not db.execute("SELECT id FROM sessions WHERE id=?", (sid,)).fetchone():
@@ -471,13 +594,22 @@ class Store:
                 providers = [row[0] for row in db.execute("SELECT DISTINCT provider FROM turns WHERE session_id=?", (sid,))]
                 provider = providers[0] if len(providers) == 1 else "mixed" if providers else "no_completed_turn"
             rid = str(uuid.uuid4())
-            db.execute("INSERT INTO reviews VALUES(?,?,?,?,?,?,?,?,?)", (rid, sid, run_id, data["persona_score"],
-                       data["empathy_score"], data["memory_score"], data["note"], provider, now()))
-        return next(row for row in self.reviews() if row["id"] == rid)
+            db.execute("""INSERT INTO reviews(id,session_id,run_id,persona_score,empathy_score,memory_score,note,provider,created,
+                schema_version,naturalness_score,continuity_score,credibility_score,boundary_score,evidence)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (rid, sid, run_id, data["persona_score"],
+                       data["empathy_score"], data.get("memory_score"), data["note"], provider, now(), version,
+                       data.get("naturalness_score"), data.get("continuity_score"), data.get("credibility_score"), data.get("boundary_score"),
+                       json.dumps(evidence, ensure_ascii=False) if evidence is not None else None))
+            result = db.execute("SELECT * FROM reviews WHERE id=?", (rid,)).fetchone()
+        return self._review_dict(result)
+
+    @staticmethod
+    def _review_dict(row):
+        return {**dict(row), "evidence": json.loads(row["evidence"]) if row["evidence"] else None}
 
     def reviews(self, permitted_only=False):
         with self.connect() as db:
             sql = "SELECT r.* FROM reviews r"
             if permitted_only:
                 sql += " JOIN sessions s ON s.id=r.session_id WHERE s.owner_user_id IS NOT NULL AND s.review_access_allowed=1"
-            return [dict(row) for row in db.execute(sql + " ORDER BY r.created DESC LIMIT 100")]
+            return [self._review_dict(row) for row in db.execute(sql + " ORDER BY r.created DESC LIMIT 100")]

@@ -30,7 +30,8 @@ The JSON uses `format_version: "1.0"`, an export timestamp, the public user prof
 | Section | Included | Excluded |
 | --- | --- | --- |
 | `user` | ID, username, creation time, recorded adult-confirmation flag | Password hash, salt, token hashes and bearer tokens |
-| `sessions` | IDs, mode, timestamps, character name/revision/greeting snapshot, memory-space reference, language, reviewer permission | System/persona prompt, other owners and anonymous legacy sessions |
+| `sessions` | IDs, mode, timestamps, character name/revision/greeting/profile snapshot, memory-space reference, language, reviewer permission | System/persona prompt, other owners and anonymous legacy sessions |
+| `session_summaries` | Attributed bounded excerpts of owned session history, serialized as JSON text | Other sessions and approved-memory promotion |
 | `messages` | All owned dialogue messages | Other users' messages |
 | `turns` | Owned completed turns, public result, provider/usage/latency and permitted action/observation fields | Hidden reasoning, credentials, prompts, unapproved proposal content |
 | `memory_spaces`, `approved_memories` | Owned spaces and confirmed facts with revisions | Process-only pending proposals |
@@ -45,7 +46,7 @@ Each application router admits at most two active snapshot workers. A third rece
 
 ## Deletion inventory and concurrency
 
-Within one write transaction the server removes the owner's sessions and cascading messages/turns/reviews, owned approved-memory spaces/facts, all user tokens, attributable audit events and the user row. Shared memory remains within one owner, so deletion removes that owner's linked sessions together. A failure rolls back database changes and preserves the process-only proposals.
+Within one write transaction the server removes the owner's sessions and cascading messages/summaries/turns/reviews, owned approved-memory spaces/facts, all user tokens, attributable audit events and the user row. Shared memory remains within one owner, so deletion removes that owner's linked sessions together. A failure rolls back database changes and preserves the process-only proposals.
 
 After commit it clears only the erased sessions' pending proposals, drops their session-lock registry entries and removes the user's in-memory admission key. IP-based security-attempt windows do not contain the user ID and remain until their short expiry. Other users, anonymous legacy sessions, seed characters and the management account remain.
 

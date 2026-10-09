@@ -2,7 +2,7 @@
 
 An inspectable character companion prototype: persona, multi-turn context, consent-based memory, bounded tool use, and evidence you can replay.
 
-**Stage: controlled APP with owner data lifecycle, v0.5.** Account mode adds reauthenticated scoped export, explicit account erasure, security-record retention and disposable backup recovery. Official DeepSeek integration has previously been exercised with eight synthetic scenarios and ten real model requests; this lifecycle iteration makes no new model calls. Human companionship-quality scoring, public deployment and physical-device acceptance remain pending. Default template configuration still uses deterministic mock replies for infrastructure checks. See [current progress](docs/CURRENT.md), [market requirements](docs/market-requirements-2026-10-09.md), and [production readiness](docs/enterprise-readiness.md) for implemented controls and remaining gates.
+**Stage: controlled APP with fictional character identities and bounded continuity, v0.6.** Three bilingual, versioned adult character profiles are queryable before and during chat; old sessions retain their snapshots. An attributed session summary, configurable output limit and six-dimensional evidence-based review extend the existing owner data lifecycle. Human companionship-quality scoring, public deployment and physical-device acceptance remain pending. Default template configuration still uses deterministic mock replies for infrastructure checks. See [current progress](docs/CURRENT.md), [character design](docs/character-identity.md), and the [v0.6 iteration](docs/iteration-2026-10-09-v0.6.md).
 
 ## Product
 
@@ -13,7 +13,7 @@ Choose an original, disclosed AI character for adults: Nova, Qinghe, or Muxing. 
 The current prototype implements:
 
 - A React/TypeScript chat UI and Python/FastAPI backend.
-- Recent-turn context and an editable persona Skill.
+- Recent whole-turn context plus bounded, attributed older excerpts, distinct fictional character profiles and an editable global persona Skill.
 - An action/observation loop with an explicit tool allowlist and step/time budgets.
 - Transient memory proposals; approval, explicit sharing between conversations, correction, and deletion.
 - Session-private dialogue, approved-memory spaces, content-checked idempotent retries, and orphan cleanup.
@@ -25,7 +25,8 @@ The current prototype implements:
 - Per-actor request budgets, bounded concurrency/session admission, private redacted audit and database readiness checks.
 - Owner-only complete-row JSON export within an explicit 16 MiB limit, password reauthentication and confirmed account erasure; [inventory and limits](docs/account-data-lifecycle.md).
 - Startup/hourly-on-request security-record cleanup and a synthetic consistent-backup/recovery drill with restored-login invalidation; [recovery guide](docs/data-backup-recovery.md).
-- Character snapshots: edited prompts apply to new conversations without silently changing existing ones.
+- Character snapshots and revision restore: new profiles/prompts apply to new conversations without rewriting old identities.
+- Six-dimensional human reviews with evidence per score; legacy three-dimensional records are kept without inventing missing ratings.
 - Public-assets-only PWA support and an Android packaging workflow; no offline chat simulation or API cache.
 - Chinese/English user and administration interfaces and language-aware responses. Authored character descriptions and transcripts retain their original language.
 

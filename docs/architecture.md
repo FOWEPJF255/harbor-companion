@@ -25,7 +25,7 @@ flowchart LR
 1. Validate session and message; serialize turns per session.
 2. Return an already completed result when the request ID repeats.
 3. Check illustrative input policies for crisis, age, and dependency signals.
-4. Assemble persona, approved memories, and bounded recent history.
+4. Assemble global rules, frozen fictional persona, approved memories, attributed bounded older excerpts and whole recent message pairs as separate sources.
 5. Request a completion; execute only registered tools with validated arguments.
 6. Append tool observations and continue until a final reply or a budget failure.
 7. Apply illustrative identity/dependency output checks.
@@ -47,7 +47,7 @@ The `skills/` files are lightweight prompt/resource modules loaded by this appli
 
 The mobile UI uses four pages; the desktop UI uses the same backend and a wider layout. Capacitor bundles the presentation assets into an Android project. PWA installation is a separate browser surface, not proof of an APK or store release.
 
-Each session snapshots the selected character name, prompt, greeting, and revision. The management plane edits the next revision without rewriting prior session personas. Raw conversations are fetched only after an authenticated administrator explicitly opens a session detail; overview and list endpoints return aggregates/summaries.
+Each session snapshots the selected character name, prompt, greeting, structured bilingual profile and revision. The management plane edits the next revision without rewriting prior session personas. Raw conversations are fetched only after an authenticated administrator explicitly opens a session detail; overview and list endpoints return aggregates/summaries.
 
 The backend retains a local default. Exact remote host/origin configuration requires an additional demo access code, while management requires a separate signed Bearer token. Bootstrap is disabled in remote mode. The code and platform/deployment limits are described in [management](management.md), [device connection](device-connection.md), and [app delivery](app-delivery.md).
 
@@ -59,6 +59,7 @@ Registered tools:
 
 | Tool | Permission | Effect |
 |---|---|---|
+| `read_own_profile` | Frozen session profile only | Read-only fictional identity; no user or alternate-character selector |
 | `read_memories` | Explicit memory-space read | Approved memories only |
 | `propose_memory` | Proposal only | Requires user approval |
 | `grounding_question` | Static resource | Optional nonclinical prompt |
@@ -75,9 +76,13 @@ There are no filesystem, browser, social-account, payment, or messaging tools. M
 - Approved memory and conversations can contain prompt injection; prompts mark them as data, but real-model resistance has not been established.
 - UI modes and persona prompts cannot prove relational safety or semantic correctness.
 - The single-process SQLite/async-lock design is not a distributed architecture.
-- Context is truncated, not summarized; information beyond the bounded history can be lost.
+- Context uses bounded extractive summaries; omissions are counted and older details can still be lost. These excerpts are session history, never approved cross-session memory.
 - Streaming/SSE, forceful tool cancellation, organization SSO/distributed authentication, production hosting, and semantic conflict merging remain outside this controlled milestone.
 
 ## Owner lifecycle extension
 
 Account data routes require the current user's bearer token plus current-password reauthentication. Export reads one bounded SQLite snapshot; account erasure removes attributable database and process data atomically where applicable. Late model results recheck owner/session before commit and cannot recreate erased records. The separate administrator remains subject to the owner's review permission. See [data lifecycle](account-data-lifecycle.md) and [disposable backup recovery](data-backup-recovery.md) for exact inventories, retention triggers and retained-copy limitations.
+
+## Character/continuity extension
+
+See [v0.6 design and limits](iteration-2026-10-09-v0.6.md), [identity schema](character-identity.md) and [migration](data-migration.md). A nonempty plain-text output truncated at the provider budget is explicitly labeled as incomplete and its memory proposals are discarded; incomplete tool calls remain failures. This controlled partial response is distinct from an execution failure. No automatic continuation request is sent.

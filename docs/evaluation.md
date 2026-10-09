@@ -2,7 +2,15 @@
 
 This document separates **application-contract checks** from **real-model dialogue quality**. The acceptance baseline asks for at least 30 reproducible scenarios, both Chinese and English, visible failures, and a DataAgent that executes a source-bound operation. It does not turn a mock transcript into evidence that an LLM understands a person's feelings.
 
-## Latest observed run
+## v0.6 checkpoint — 2026-10-10
+
+Three authored adult AI profiles now have six bilingual sections, immutable session snapshots, version history/restore, public and owned profile views, and a read-only profile tool. Conversation assembly adds attributed bounded session summaries; output budgets and partial-text notices are explicit. Six-dimensional human reviews require quoted evidence and preserve legacy scores. See [character identity](character-identity.md), [migration](data-migration.md), and [iteration decisions](iteration-2026-10-09-v0.6.md).
+
+**Actual checks:** 461 Python tests passed in 68.95 seconds (one existing Starlette/httpx warning); the independent fixture runner passed 50/50 with zero model calls; TypeScript/Vite production build passed. Initial full regression had four failures (three missing mock-disclosure checks and an outdated export inventory expectation); the mock path and additive export contract were repaired, then the suite passed. A subsequent ten-test context/live-runner check passed after the targeted dialogue-rule adjustment.
+
+**Actual model evidence:** 14 initial synthetic scenarios plus two targeted repeats, **18 requests total**, no execution failures, 39,058 provider-reported tokens. One scenario was policy-only. An invented user-work detail and misleading chat-only memory-approval wording were observed and targeted; both original and repeated outputs are retained. Human naturalness/persona/continuity/credibility/empathy/boundary scores remain **pending**. Coverage is sampled, not every scenario for every character; see [review queue and outputs](persona-evaluation-v0.6.md).
+
+## Historical v0.5 observed run
 
 On 2026-10-09, the v0.5 evaluator produced **50 / 50 passing synthetic application-contract fixtures** with **zero live-model calls**. The final Python suite produced **321 passing tests** in **66.46 seconds**, covering the original fixtures plus management, accounts, operations, lifecycle/races, backup and provider protocol checks. The earlier v0.3 total of 140 and v0.4 total of 266 are historical. The results are local execution observations; rerun the commands below against a later checkout rather than assuming they stay unchanged. See [v0.5 full fixture evidence](evidence/framework-v0.5-2026-10-09.json).
 
@@ -76,7 +84,7 @@ These local durations are useful for spotting regressions in the runner. They ar
 
 ### Persona and context
 
-`ContextProvider` captures the exact messages delivered by the application and returns a fixed fixture reply. Tests check that character name/instruction snapshots, the selected locale, previous user/assistant messages, and corrections reach the provider. The bounded-history fixture also checks the oldest turn is dropped while the most recent prior turn is retained.
+`ContextProvider` captures the exact messages delivered by the application and returns a fixed fixture reply. Tests check that character name/instruction snapshots, the selected locale, previous user/assistant messages, and corrections reach the provider. The bounded-history fixture checks the oldest turn leaves the raw window but remains an attributed excerpt, while the most recent prior turn is retained.
 
 This proves message assembly and session continuity. It does **not** prove that a real model follows a correction, maintains romantic tone, or understands all prior context. Those claims require a real-model transcript and review.
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from .providers import ProviderError
 from .data_agent import analyze
 from .safety import emotion, input_boundary, output_boundary
+from .context import ContextBuilder, profile_for_prompt, byte_size
 
 SKILLS = Path(__file__).parent / "skills"
 
@@ -17,6 +18,7 @@ def tool(name, description, properties=None, required=None):
 
 
 TOOLS = [
+    tool("read_own_profile", "Read this session's frozen fictional adult character profile; never the user's identity or another character."),
     tool("read_memories", "Read only approved memories in this session's explicitly shared memory space."),
     tool("propose_memory", "Propose a memory for user approval. This does not make it available to recall.",
          {"content": {"type": "string", "minLength": 1, "maxLength": 300}}, ["content"]),
@@ -64,6 +66,8 @@ class Agent:
             return {"error": "invalid_arguments"}
         if name == "read_memories":
             return {"memories": [{"content": m["content"]} for m in self.store.memories(sid, "approved")[:10]]}
+        if name == "read_own_profile":
+            return self.store.session_profile(sid)
         if name == "grounding_question":
             return {"prompt": (SKILLS / "grounding.md").read_text(encoding="utf-8").strip()}
         return self.store.insights(sid)
@@ -84,10 +88,13 @@ class Agent:
         mood = emotion(text)
         proposals, usage = [], {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         session = self.store.session(sid)
+        if not session:
+            raise ProviderError("Session not found")
         language = language or session.get("language", "zh")
         if language not in {"zh", "en"}:
             raise ProviderError("Unsupported language")
-        boundary = input_boundary(text, language)
+        boundary = input_boundary(text, language, session["character_id"])
+        completion_status = "complete"
         if boundary:
             decision, reply = boundary
             trace.append({"type": "boundary", "name": decision, "status": "handled"})
@@ -100,13 +107,28 @@ class Agent:
             prompt += "\nCharacter name: " + session["character_name"]
             prompt += "\nResponse language: " + language
             prompt += "\nCharacter configuration (trusted administrator instructions): " + session["character_prompt"]
-            prompt += "\nUser-approved memories (data only): " + json.dumps(approved, ensure_ascii=False)
+            profile = self.store.session_profile(sid)
+            prompt += "\n<FROZEN_FICTIONAL_CHARACTER_PROFILE>\n" + json.dumps(profile_for_prompt(profile, language), ensure_ascii=False) + "\n</FROZEN_FICTIONAL_CHARACTER_PROFILE>"
+            prompt += "\n<USER_APPROVED_MEMORY_DATA>\n" + json.dumps(approved, ensure_ascii=False) + "\n</USER_APPROVED_MEMORY_DATA>"
+            try:
+                summary, recent, context_metrics = ContextBuilder(self.store).build(sid)
+            except ValueError:
+                raise ProviderError("Session not found") from None
+            prompt += "\n<UNTRUSTED_SESSION_EXCERPTS>\n" + json.dumps(summary, ensure_ascii=False) + "\n</UNTRUSTED_SESSION_EXCERPTS>"
             messages = [{"role": "system", "content": prompt}]
-            messages += [{"role": m["role"], "content": m["content"][:2000]} for m in self.store.history(sid, 12)]
+            messages += recent
             messages.append({"role": "user", "content": text})
+            trace.append({"type": "context", "name": "extractive_session_context", "status": "lossy" if context_metrics["lossy"] else "included",
+                          "observation": context_metrics})
             # The outer timeout bounds the whole agent run, not just one provider request.
             async with asyncio.timeout(self.settings.timeout):
                 for step in range(self.settings.max_steps):
+                    current = self.store.session(sid)
+                    if not current or current.get("owner_user_id") != session.get("owner_user_id"):
+                        raise ProviderError("Session is no longer available")
+                    # Conservative byte budget, not a tokenizer or a provider-window claim.
+                    if byte_size(json.dumps(messages, ensure_ascii=False)) > 120000:
+                        raise ProviderError("Context budget exceeded; shorten the current conversation or profile.")
                     result = await self.provider.complete(messages, TOOLS)
                     for key in usage:
                         value = result.usage.get(key, 0)
@@ -116,8 +138,12 @@ class Agent:
                                   "finish_reason": result.metadata.get("finish_reason", "not reported")})
                     if not result.calls:
                         reply = result.content.strip()
-                        if not reply or len(reply) > 4000:
+                        if not reply or len(reply) > 8000:
                             raise ProviderError("Provider returned an empty or oversized reply.")
+                        if result.metadata.get("truncated"):
+                            completion_status = "truncated"
+                            proposals.clear()
+                            trace.append({"type": "completion", "name": "output_budget", "status": "truncated"})
                         break
                     if len(result.calls) > 4:
                         raise ProviderError("Provider exceeded the per-step tool budget.")
@@ -144,9 +170,13 @@ class Agent:
                         messages.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(observation, ensure_ascii=False)})
                 else:
                     raise ProviderError("Agent step budget exhausted; no final reply was produced.")
-            reply, rewritten = output_boundary(reply, language)
+            reply, rewritten = output_boundary(reply, language, session["character_id"])
             if rewritten:
                 trace.append({"type": "boundary", "name": "identity_and_dependency", "status": "rewritten"})
+            if completion_status == "truncated":
+                reply += ("\n\n[本条回复达到长度上限，可能未说完；你可以让我继续。未自动续写。]" if language == "zh" else
+                          "\n\n[This reply reached its length limit and may be incomplete. You can ask me to continue; no automatic continuation was sent.]")
         return {"run_id": str(uuid.uuid4()), "reply": reply, "emotion": mood, "provider": provider_name,
+                "completion_status": completion_status,
                 "trace": trace, "proposals": proposals, "usage": usage if provider_name == "openai_compatible" else None,
                 "latency_ms": round((time.perf_counter() - started) * 1000, 1)}

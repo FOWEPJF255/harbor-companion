@@ -1,3 +1,5 @@
+import type { PersonaProfile, ReviewDimension } from '../persona'
+
 export type AdminView = 'overview' | 'characters' | 'sessions' | 'reviews' | 'provider' | 'operations'
 
 export type AdminAuthMode = 'local_demo' | 'accounts'
@@ -11,6 +13,7 @@ export interface CharacterInput {
   accent_color: string
   avatar_style: 'nova' | 'sage' | 'ember'
   enabled: boolean
+  profile?: PersonaProfile | null
 }
 
 export interface Character extends CharacterInput {
@@ -86,7 +89,13 @@ export interface Review {
   run_id: string | null
   persona_score: number
   empathy_score: number
-  memory_score: number
+  memory_score: number | null
+  schema_version?: number
+  naturalness_score?: number | null
+  continuity_score?: number | null
+  credibility_score?: number | null
+  boundary_score?: number | null
+  evidence?: Record<ReviewDimension, string> | null
   note: string
   created: string
   provider: string

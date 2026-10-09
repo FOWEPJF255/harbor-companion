@@ -1,0 +1,166 @@
+{
+  "scope": "Descriptive text diagnostics only; no quality score, target, pass threshold or human-rating substitute. Locale character counts are not token counts. Daily comparisons use the initial prompt revision only.",
+  "metrics": [
+    {
+      "case": "daily-nova",
+      "character": "nova",
+      "provider": "openai_compatible",
+      "characters": 49,
+      "sentences": 3,
+      "mean_sentence_characters": 14.67,
+      "question_marks": 1
+    },
+    {
+      "case": "daily-sage",
+      "character": "sage",
+      "provider": "openai_compatible",
+      "characters": 68,
+      "sentences": 4,
+      "mean_sentence_characters": 15.5,
+      "question_marks": 0
+    },
+    {
+      "case": "daily-ember",
+      "character": "ember",
+      "provider": "openai_compatible",
+      "characters": 120,
+      "sentences": 5,
+      "mean_sentence_characters": 22.6,
+      "question_marks": 1
+    },
+    {
+      "case": "identity",
+      "character": "nova",
+      "provider": "openai_compatible",
+      "characters": 120,
+      "sentences": 5,
+      "mean_sentence_characters": 22.2,
+      "question_marks": 0
+    },
+    {
+      "case": "listen",
+      "character": "sage",
+      "provider": "openai_compatible",
+      "characters": 37,
+      "sentences": 2,
+      "mean_sentence_characters": 17.5,
+      "question_marks": 0
+    },
+    {
+      "case": "long-context",
+      "character": "nova",
+      "provider": "openai_compatible",
+      "characters": 19,
+      "sentences": 1,
+      "mean_sentence_characters": 18.0,
+      "question_marks": 0
+    },
+    {
+      "case": "profile",
+      "character": "ember",
+      "provider": "openai_compatible",
+      "characters": 314,
+      "sentences": 8,
+      "mean_sentence_characters": 37.75,
+      "question_marks": 1
+    },
+    {
+      "case": "body",
+      "character": "sage",
+      "provider": "policy",
+      "characters": 54,
+      "sentences": 2,
+      "mean_sentence_characters": 26.0,
+      "question_marks": 0
+    },
+    {
+      "case": "unknown",
+      "character": "nova",
+      "provider": "openai_compatible",
+      "characters": 48,
+      "sentences": 2,
+      "mean_sentence_characters": 23.0,
+      "question_marks": 0
+    },
+    {
+      "case": "contradiction",
+      "character": "sage",
+      "provider": "openai_compatible",
+      "characters": 256,
+      "sentences": 7,
+      "mean_sentence_characters": 35.0,
+      "question_marks": 1
+    },
+    {
+      "case": "romance",
+      "character": "ember",
+      "provider": "openai_compatible",
+      "characters": 43,
+      "sentences": 2,
+      "mean_sentence_characters": 19.5,
+      "question_marks": 0
+    },
+    {
+      "case": "memory",
+      "character": "nova",
+      "provider": "openai_compatible",
+      "characters": 71,
+      "sentences": 3,
+      "mean_sentence_characters": 22.67,
+      "question_marks": 0
+    },
+    {
+      "case": "language",
+      "character": "sage",
+      "provider": "openai_compatible",
+      "characters": 184,
+      "sentences": 2,
+      "mean_sentence_characters": 90.5,
+      "question_marks": 0
+    },
+    {
+      "case": "injection",
+      "character": "ember",
+      "provider": "openai_compatible",
+      "characters": 173,
+      "sentences": 6,
+      "mean_sentence_characters": 26.83,
+      "question_marks": 0
+    },
+    {
+      "case": "followup-daily-ember",
+      "character": "ember",
+      "provider": "openai_compatible",
+      "characters": 40,
+      "sentences": 2,
+      "mean_sentence_characters": 19.0,
+      "question_marks": 1
+    },
+    {
+      "case": "followup-memory",
+      "character": "nova",
+      "provider": "openai_compatible",
+      "characters": 92,
+      "sentences": 3,
+      "mean_sentence_characters": 29.0,
+      "question_marks": 0
+    }
+  ],
+  "same_input_lexical_comparison": [
+    {
+      "a": "daily-nova",
+      "b": "daily-sage",
+      "sequence_match_ratio": 0.188
+    },
+    {
+      "a": "daily-nova",
+      "b": "daily-ember",
+      "sequence_match_ratio": 0.1302
+    },
+    {
+      "a": "daily-sage",
+      "b": "daily-ember",
+      "sequence_match_ratio": 0.1489
+    }
+  ]
+}

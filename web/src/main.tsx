@@ -1,4 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
+import PersonaPanel from './PersonaPanel'
+import { personaTranslator, type ProfileTarget } from './persona'
 import { createRoot } from 'react-dom/client'
 import { api, ApiError, clearConnection, getConnection, localizeApiMessage, setConnection } from './api'
 import { AppInstall, isNativeApp, registerAppShell } from './AppInstall'
@@ -16,7 +18,7 @@ type SessionSummary = {id: string; character_name: string; mode: string; created
 type Character = {id: string; name: string; tagline: string; description: string; greeting: string; accent_color: string; avatar_style: string; revision: number}
 type Status = {provider: string; configured: boolean; model: string | null; auth_mode: AuthMode; registration_enabled: boolean}
 type Trace = {type?: string; name?: string; status?: string; step?: number; input?: unknown; observation?: unknown; [key: string]: unknown}
-type Run = {reply: string; provider: string; trace: Trace[]; latency_ms: number; emotion: string}
+type Run = {reply: string; provider: string; trace: Trace[]; latency_ms: number; emotion: string; completion_status?: string}
 type Analysis = {answer: string; plan: unknown; result: unknown; trace: Trace[]; source: unknown; scope: unknown}
 type Tab = 'characters' | 'chat' | 'memory' | 'me' | 'data'
 
@@ -118,7 +120,8 @@ export function App() {
   const [connection, setConnectionDraft] = useState(getConnection)
   const [connectionNotice, setConnectionNotice] = useState('')
   const [accountNotice, setAccountNotice] = useState<TextKey | null>(null)
-  const retry = useRef<{sid: string; text: string; id: string; language: Language} | null>(null)
+  const [profileTarget, setProfileTarget] = useState<ProfileTarget | null>(null)
+  const retry = useRef<{sid: string; text: string; id: string; language: Language; preserveDraft?: boolean} | null>(null)
   const knownIds = useRef<string[]>([])
   const messagesEnd = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
@@ -142,6 +145,7 @@ export function App() {
 
   function resetPrivateState() {
     sessionSelection.current += 1
+    setProfileTarget(null)
     setSession(null); setSessions([]); setNextCursor(null); knownIds.current = []; listRequest.current += 1
     setLastRun(null); setFailedTrace([]); retry.current = null; setDraft(''); setPendingText('')
     setMemoryDraft(''); setEditingMemory(null); setCorrection(''); setReuseMemories(false)
@@ -266,8 +270,12 @@ export function App() {
     } catch (error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
-  async function restoreSession(sid: string) {
+  async function restoreSession(sid: string, showProfile = false) {
     if (busy) return
+    if (showProfile && session?.id === sid) {
+      setProfileTarget({kind: 'session', id: session.id, name: session.character_name})
+      return
+    }
     sessionSelection.current += 1
     const context = identityContext()
     const activeKey = getUserSessionKey('harbor-session')
@@ -278,25 +286,28 @@ export function App() {
       setSession(restored); setSelectedCharacterId(restored.character_id || 'nova'); setMode(restored.mode)
       localStorage.setItem(activeKey, sid)
       setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false); setLastRun(null); setFailedTrace([]); retry.current = null; setTab('chat')
+      if (showProfile) setProfileTarget({kind: 'session', id: restored.id, name: restored.character_name})
     } catch (error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
-  async function send(text = draft) {
-    if (!session || !text.trim() || busy) return
+  async function send(text = draft, preserveDraft = false): Promise<boolean> {
+    if (!session || !text.trim() || busy) return false
     const context = identityContext()
     const sid = session.id
-    setBusy(true); setSending(true); setError(''); setDraft(''); setPendingText(text); setLastRun(null); setFailedTrace([])
-    const request = retry.current?.sid === sid && retry.current.text === text ? retry.current : {sid, text, id: crypto.randomUUID(), language}
+    setBusy(true); setSending(true); setError(''); if (!preserveDraft) setDraft(''); setPendingText(text); setLastRun(null); setFailedTrace([])
+    const request = retry.current?.sid === sid && retry.current.text === text ? retry.current : {sid, text, id: crypto.randomUUID(), language, preserveDraft}
     retry.current = request
     try {
       const result = await userApi<Run>(`/sessions/${sid}/chat`, 'POST', {message: text, request_id: request.id, language: request.language})
-      if (!identityIsCurrent(context)) return
+      if (!identityIsCurrent(context)) return false
       setLastRun(result); await refresh(sid)
-      if (!identityIsCurrent(context)) return
+      if (!identityIsCurrent(context)) return false
       retry.current = null
       refreshSessions().catch(error => {if (identityIsCurrent(context)) setError((error as Error).message)})
+      return true
     } catch (error) {
-      if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) {setError((error as Error).message); setDraft(text); if (error instanceof ApiError && error.trace.length) setFailedTrace(error.trace as Trace[])}
+      if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) {setError((error as Error).message); if (!preserveDraft) setDraft(text); if (error instanceof ApiError && error.trace.length) setFailedTrace(error.trace as Trace[])}
+      return false
     } finally {if (identityIsCurrent(context)) {setBusy(false); setSending(false); setPendingText('')}}
   }
 
@@ -419,17 +430,20 @@ export function App() {
   const mock = status?.provider === 'mock'
   const identityReady = userAuth.phase === 'demo' || userAuth.phase === 'authenticated'
   const pendingCount = session?.memories.filter(memory => memory.status === 'pending').length || 0
+  const p = personaTranslator(language)
 
   return <div className={`app-shell tab-${tab} detail-${desktopDetail} language-${language} ${keyboardOpen ? 'keyboard-open' : ''}`}>
     <header className="topbar">
       <button className="brand" onClick={() => goToTab('characters')} aria-label={t('brandHome')}><span className="brand-icon">◒</span><span><strong>harbor<span className="brand-dot">.</span></strong><small>{t('brand')}</small></span></button>
       <div className="topbar-right"><label className="language-control"><span className="sr-only">{t('language')}</span><select aria-label={t('language')} value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="zh">中文</option><option value="en">EN</option></select></label><span className={`provider-pill ${mock ? 'mock' : ''}`} title={t(mock ? 'mockHint' : 'apiHint')}><i/>{status ? mock ? t('mockStatus') : status.configured ? t('apiConfigured') : t('modelPending') : t('connecting')}</span><button className="desktop-account icon-button" aria-label={t('accountLabel')} onClick={() => goToTab('me')}>☷</button></div>
     </header>
-    {error && <div className="global-error" role="alert"><span>{localizeApiMessage(error, language)}</span>{retry.current && session?.id === retry.current.sid && <button disabled={busy} onClick={() => send(retry.current!.text)}>{t('retry')}</button>}<button className="error-dismiss" onClick={() => setError('')} aria-label={t('dismiss')}>×</button></div>}
+    {error && <div className="global-error" role="alert"><span>{localizeApiMessage(error, language)}</span>{retry.current && session?.id === retry.current.sid && <button disabled={busy} onClick={() => send(retry.current!.text, retry.current!.preserveDraft)}>{t('retry')}</button>}<button className="error-dismiss" onClick={() => setError('')} aria-label={t('dismiss')}>×</button></div>}
     <main className="layout">
       <section className="character-panel page-panel" aria-label={t('chooseCharacter')}>
         <div className="page-heading"><p className="eyebrow">YOUR LITTLE HARBOR</p><h1>{t('characterTitle')}</h1><p className="muted">{t('characterSubtitle')}</p></div>
         <div className="character-hero"><span className="hero-constellation">✧</span><Portrait character={selectedCharacter} language={language}/><div className="hero-name"><h2>{selectedCharacter.name}<span>✦</span></h2><span className="tag">{t('aiRole')} · v{selectedCharacter.revision}</span></div><p className="character-tagline">{selectedCharacter.tagline}</p><p className="character-copy">{selectedCharacter.description}</p></div>
+        <button className="profile-entry" type="button" disabled={!characters.length} onClick={() => setProfileTarget({kind: 'public', id: selectedCharacter.id, name: selectedCharacter.name})}>✧ {p('viewProfile')} <span>↗</span></button>
+        <p className="character-fiction-note">{p('fiction')}</p>
         {language === 'en' && <p className="original-copy-note">{t('originalCopy')}</p>}
         <div className="section-title"><h3>{t('chooseCharacter')}</h3><span>{t('originalArt')}</span></div>
         <div className="character-options" aria-label={t('chooseCharacter')}>
@@ -446,7 +460,7 @@ export function App() {
       </section>
 
       <section className="conversation-panel page-panel" aria-label={t('chat')}>
-        <div className="conversation-header"><div className="chat-avatar"><Portrait character={currentCharacter} small language={language}/></div><div className="conversation-title"><h2>{session ? characterName : t('welcomeTitle')}</h2><p>{session ? `${modeNames[session.mode] || session.mode} · ${t('aiRole')}` : t('welcomeSubtitle')}</p></div><button className="icon-button session-shortcut" aria-label={t('viewSessions')} onClick={() => goToTab('me')}>☷</button></div>
+        <div className="conversation-header"><div className="chat-avatar"><Portrait character={currentCharacter} small language={language}/></div><div className="conversation-title"><h2>{session ? characterName : t('welcomeTitle')}</h2><p>{session ? `${modeNames[session.mode] || session.mode} · ${t('aiRole')} · v${session.character_revision}` : t('welcomeSubtitle')}</p></div>{session && <button type="button" className="chat-profile-button" aria-label={p('viewProfile')} onClick={() => setProfileTarget({kind: 'session', id: session.id, name: characterName})}>✧<small>{p('profile')}</small></button>}<button className="icon-button session-shortcut" aria-label={t('viewSessions')} onClick={() => goToTab('me')}>☷</button></div>
         {mock && <div className="demo-notice"><span>{t('mockMode')}</span>{t('mockBanner')}</div>}
         {restoring && !session ? <div className="welcome"><div className="welcome-symbol">◌</div><h3>{t('restoring')}</h3><p>{t('storedBackend')}</p></div> : !session ? <div className="welcome"><div className="welcome-symbol">☾</div><h3>{t('notRush')}</h3><p>{t('welcomeCopy')}</p><button className="primary" onClick={() => goToTab('characters')}>{t('chooseCharacter')}<span>↗</span></button><div className="welcome-features"><span>◇ {t('consentFeature')}</span><span>◌ {t('sessionFeature')}</span><span>✧ {t('identityFeature')}</span></div></div> : <>
           <div className="messages" aria-live="polite" aria-busy={sending}>
@@ -456,6 +470,7 @@ export function App() {
             {sending && <div className="typing" role="status"><span/><span/><span/><em>{t('responding')}</em></div>}
             <div ref={messagesEnd} className="messages-end"/>
           </div>
+          {lastRun?.completion_status === 'truncated' && <p className="completion-warning" role="status">{p('truncated')}</p>}
           <div className="composer-area"><div className="starters">{starters[language].map(text => <button disabled={busy} key={text} onClick={() => send(text)}>{text}</button>)}</div>
             <form onSubmit={event => {event.preventDefault(); if (!composing.current) void send()}}><textarea ref={input} aria-label={t('messageLabel')} placeholder={t('messagePlaceholder')} rows={1} value={draft} maxLength={2000} disabled={busy} onChange={event => setDraft(event.target.value)} onCompositionStart={() => {composing.current = true}} onCompositionEnd={() => {composing.current = false}} onKeyDown={event => {if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) {event.preventDefault(); void send()}}}/><button type="submit" aria-label={t('sendMessage')} disabled={busy || !draft.trim()}>↑</button></form>
             <p className="composer-note"><span>{t('yourPace')}</span><span className="desktop-composer-hint">{t('enterHint')}</span></p>
@@ -490,7 +505,7 @@ export function App() {
           {userAuth.mode === 'accounts' && userAuth.phase === 'authenticated' && <AccountDataPanel key={`${userAuth.backendKey}:${userAuth.epoch}`} language={language} disabled={busy} onDeleted={() => setAccountNotice('accountDeleted')}/>}
           <div className="section-title"><h3>{t(userAuth.mode === 'accounts' ? 'accountSessions' : 'deviceSessions')}</h3><button className="text-button" disabled={busy || !identityReady} onClick={() => goToTab('characters')}>＋ {t('newChat')}</button></div>
           <p className="micro session-list-note">{t(userAuth.mode === 'accounts' ? 'accountDeviceHint' : 'deviceHint')}</p>
-          <div className="session-list">{sessions.length ? sessions.map(item => <button key={item.id} disabled={busy} className={`session-card ${item.id === session?.id ? 'current' : ''}`} onClick={() => restoreSession(item.id)}><span className="session-card-icon">◌</span><span><strong>{item.character_name || t('aiRole')}{item.id === session?.id && <i>{t('current')}</i>}</strong><small>{modeNames[item.mode] || item.mode} · {item.turn_count} {t('turns')}</small><small>{shortDate(item.last_active || item.created, language)}</small></span><b>↗</b></button>) : <div className="small-empty">{t('noSessions')}</div>}</div>
+          <div className="session-list">{sessions.length ? sessions.map(item => <div className="session-card-group" key={item.id}><button disabled={busy} className={`session-card ${item.id === session?.id ? 'current' : ''}`} onClick={() => restoreSession(item.id)}><span className="session-card-icon">◌</span><span><strong>{item.character_name || t('aiRole')}{item.id === session?.id && <i>{t('current')}</i>}</strong><small>{modeNames[item.mode] || item.mode} · {item.turn_count} {t('turns')}</small><small>{shortDate(item.last_active || item.created, language)}</small></span><b>↗</b></button><button className="session-profile-link" type="button" disabled={busy} onClick={() => restoreSession(item.id, true)}>✧ {p('historyProfile')}</button></div>) : <div className="small-empty">{t('noSessions')}</div>}</div>
           {nextCursor && <button className="secondary load-more-sessions" disabled={busy} onClick={loadMoreSessions}>{t('loadMore')}</button>}
           <button className="data-agent-entry" disabled={!identityReady} onClick={() => goToTab('data')}><span>◈ {t('dataAgent')}<small>{t('dataEntryHint')}</small></span><b>↗</b></button>
           <div className="settings-block"><div className="section-title"><h3>{t('appConnection')}</h3><button className="text-button" disabled={busy} onClick={reloadService}>{t('refresh')}</button></div><div className="setting-row"><span>{t('currentModel')}</span><strong>{status ? mock ? t('mockFlow') : status.model || t('pendingConfig') : t('disconnected')}</strong></div><div className="setting-row"><span>{t('dataRange')}</span><strong>{t('currentBackend')}</strong></div>{!online && language === 'en' && <p className="connection-notice" role="status">{t('offline')}</p>}{language === 'zh' ? <AppInstall/> : !isNativeApp() && <details className="install-guide"><summary>{t('installTitle')}</summary><p>{t('installHint')}</p><small>{t('installBoundary')}</small></details>}<a className="admin-entry" href="?view=admin"><span>⚙ {t('admin')}<small>{t('adminHint')}</small></span><b>↗</b></a></div>
@@ -505,6 +520,13 @@ export function App() {
       </aside>
     </main>
     <nav className="mobile-nav" aria-label={t('navLabel')}>{tabItems.map(item => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => goToTab(item.id)} aria-current={tab === item.id ? 'page' : undefined}><span>{item.icon}{item.id === 'memory' && pendingCount > 0 && <i>{pendingCount}</i>}</span><small>{t(item.label)}</small></button>)}</nav>
+    <PersonaPanel key={`${userAuth.backendKey}:${userAuth.epoch}`} target={profileTarget} language={language} onLanguage={setLanguage} portrait={<Portrait character={profileTarget?.kind === 'session' ? currentCharacter : selectedCharacter} small language={language}/>} currentSessionId={session?.id} busy={busy} onClose={() => setProfileTarget(null)} onChoose={id => {setSelectedCharacterId(id); setProfileTarget(null); goToTab('characters')}} onAsk={async text => {
+      if (!session || profileTarget?.kind !== 'session' || profileTarget.id !== session.id) return false
+      const context = identityContext()
+      const sent = await send(text, true)
+      if (sent && identityIsCurrent(context)) {setProfileTarget(null); goToTab('chat')}
+      return sent
+    }}/>
   </div>
 }
 

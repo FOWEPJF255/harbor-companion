@@ -2,7 +2,11 @@
 
 This is a plan, not a promise to a recruiter or evidence of completed work. API availability and review feedback affect timing.
 
-## Current checkpoint: 2026-10-09
+## Current checkpoint: 2026-10-10
+
+The requested v0.6 persona upgrade is implemented: versioned bilingual fictional identities, bounded attributed continuity, explicit partial output and six-dimensional reviews. Actual 18-request synthetic evidence and two targeted repairs are recorded in [persona review queue](persona-evaluation-v0.6.md). Prioritize human review and phone/browser acceptance. The [GitHub reference study](persona-github-references-2026-10-10.md) proposes small next mechanisms; none is counted as implemented merely because it appears in that document.
+
+### Earlier v0.5 checkpoint
 
 The v0.5 checkpoint adds reauthenticated owner export/account erasure, late-run deletion guards, audit provenance, startup/hourly-on-request security retention and disposable backup recovery. The v0.4 accounts/operations and initial actual DeepSeek evidence, and v0.3 consent/bilingual/DataAgent foundation, are preserved. Local checks and actual model runs are recorded in [evidence](evidence.md); human semantic-quality scoring and physical-phone operation remain pending. Continue from [CURRENT](CURRENT.md) rather than rebuilding milestone 0.
 

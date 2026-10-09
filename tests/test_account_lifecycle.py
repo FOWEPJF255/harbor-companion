@@ -13,6 +13,7 @@ import pytest
 import harbor.account_lifecycle as lifecycle
 from harbor.account_lifecycle import account_router
 from harbor.store import Store, now
+from harbor.context import ContextBuilder
 from harbor.user_auth import UserAuth, user_router
 
 PASSWORD = "synthetic-lifecycle-password-12"
@@ -85,13 +86,13 @@ def seed_owned_history(data, count=120):
     with store.connect() as db:
         db.executemany("INSERT INTO turns(id,session_id,request_id,provider,emotion,latency_ms,response,created,request_hash) VALUES(?,?,?,?,?,?,?,?,?)", turns)
         db.executemany("INSERT INTO messages(session_id,role,content,emotion,created) VALUES(?,?,?,?,?)", messages)
-        db.executemany("INSERT INTO reviews VALUES(?,?,?,?,?,?,?,?,?)", reviews)
+        db.executemany("INSERT INTO reviews(id,session_id,run_id,persona_score,empathy_score,memory_score,note,provider,created) VALUES(?,?,?,?,?,?,?,?,?)", reviews)
     store.audit_event(data["users"]["alice"]["id"], "run_completed", sid, run_id=turns[0][0], provider="mock", duration_ms=1)
     return turns
 
 
 def table_counts(store):
-    names = ("users", "user_tokens", "sessions", "memory_spaces", "approved_memories", "messages", "turns", "reviews", "audit_events", "administrators")
+    names = ("users", "user_tokens", "sessions", "memory_spaces", "approved_memories", "messages", "session_summaries", "turns", "reviews", "audit_events", "administrators")
     with store.connect() as db:
         return {name: db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0] for name in names}
 
@@ -104,7 +105,7 @@ def test_export_is_complete_owned_snapshot_beyond_ui_limits(owner_data):
     assert response.headers["Cache-Control"] == "no-store" and response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Content-Type"] == "application/json"
     payload = response.json()
-    assert set(payload) == {"format_version", "exported_at", "user", "sessions", "messages", "turns", "memory_spaces", "approved_memories", "reviews", "audit"}
+    assert set(payload) == {"format_version", "exported_at", "user", "sessions", "messages", "session_summaries", "turns", "memory_spaces", "approved_memories", "reviews", "audit"}
     assert payload["format_version"] == "1.0"
     assert set(payload["user"]) == {"id", "username", "created", "adult_confirmed"}
     assert payload["user"]["adult_confirmed"] is True
@@ -116,6 +117,26 @@ def test_export_is_complete_owned_snapshot_beyond_ui_limits(owner_data):
     assert payload["turns"][0]["response"]["trace"][0]["input"] == {}
     assert payload["turns"][0]["response"]["trace"][0]["observation"]["memories"][0]["content"] == "synthetic-alice-approved-memory"
     assert any(row["action"] == "user_provisioned" and row["actor_id"] == "administrator" for row in payload["audit"])
+
+
+def test_summary_export_and_erasure_are_owner_scoped(owner_data):
+    seed_owned_history(owner_data, 12)
+    store = owner_data["store"]
+    ContextBuilder(store).build(owner_data["a"]["id"])
+    with store.connect() as db:
+        db.execute("INSERT INTO session_summaries VALUES(?,?,?,?)",
+                   (owner_data["b"]["id"], 1, json.dumps({"entries": [OTHER_MESSAGE]}), now()))
+    response = request(owner_data)
+    assert response.status_code == 200 and OTHER_MESSAGE not in response.text
+    summaries = response.json()["session_summaries"]
+    assert len(summaries) == 1 and summaries[0]["session_id"] == owner_data["a"]["id"]
+    assert "synthetic-owned-input" in summaries[0]["content"]
+    assert response.json()["sessions"][0]["character_profile"]
+    removed = request(owner_data, "/me", {"password": PASSWORD, "confirmation": "DELETE"}, "DELETE")
+    assert removed.status_code == 200
+    with store.connect() as db:
+        rows = db.execute("SELECT session_id FROM session_summaries").fetchall()
+    assert [row["session_id"] for row in rows] == [owner_data["b"]["id"]]
 
 
 def test_export_excludes_credentials_prompts_proposals_and_other_accounts(owner_data):

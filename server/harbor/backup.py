@@ -33,10 +33,13 @@ OPTIONAL_SCHEMA = {
     "administrators": {"id", "username", "password_hash", "salt", "created"},
     "reviews": {"id", "session_id", "run_id", "persona_score", "empathy_score", "memory_score", "provider", "created"},
     "audit_events": {"id", "actor_id", "action", "target_id", "metadata", "created"},
+    "session_summaries": {"session_id", "through_message_id", "content", "updated"},
+    "character_revisions": {"character_id", "revision", "snapshot", "created"},
 }
 PRIMARY_KEYS = {"sessions": "id", "messages": "id", "memories": "id", "turns": "id",
                 "users": "id", "user_tokens": "token_hash", "memory_spaces": "id", "approved_memories": "id",
                 **{name: "id" for name in OPTIONAL_SCHEMA}}
+PRIMARY_KEYS.update(session_summaries="session_id", character_revisions="character_id")
 
 
 class BackupError(ValueError):

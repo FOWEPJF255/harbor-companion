@@ -1,10 +1,28 @@
 # Current progress and acceptance
 
-Updated: 2026-10-09, Asia/Shanghai. Source baseline: the owner's `APP需求与验收基线.md` dated 2026-10-09. This file is the continuation entry point; read AGENTS, this file, roadmap, and evidence before the next iteration.
+Updated: 2026-10-10, Asia/Shanghai. Source baseline: the owner's `APP需求与验收基线.md` dated 2026-10-09. This file is the continuation entry point; read AGENTS, this file, roadmap, and evidence before the next iteration.
 
 The latest user direction expands the MVP into market-informed operational engineering. Continue from [production readiness](enterprise-readiness.md) and the [market requirement register](market-requirements-2026-10-09.md), preserving the original adult companion/APP scope. The prior [bilingual management follow-up](iteration-2026-10-09-bilingual.md) is retained.
 
-## Current milestone
+## v0.6 checkpoint — 2026-10-10
+
+Three authored adult AI profiles now have six bilingual sections, immutable session snapshots, version history/restore, public and owned profile views, and a read-only profile tool. Conversation assembly adds attributed bounded session summaries; output budgets and partial-text notices are explicit. Six-dimensional human reviews require quoted evidence and preserve legacy scores. See [character identity](character-identity.md), [migration](data-migration.md), and [iteration decisions](iteration-2026-10-09-v0.6.md).
+
+**Actual checks:** 461 Python tests passed in 68.95 seconds (one existing Starlette/httpx warning); the independent fixture runner passed 50/50 with zero model calls; TypeScript/Vite production build passed. Initial full regression had four failures (three missing mock-disclosure checks and an outdated export inventory expectation); the mock path and additive export contract were repaired, then the suite passed. A subsequent ten-test context/live-runner check passed after the targeted dialogue-rule adjustment.
+
+**Actual model evidence:** 14 initial synthetic scenarios plus two targeted repeats, **18 requests total**, no execution failures, 39,058 provider-reported tokens. One scenario was policy-only. An invented user-work detail and misleading chat-only memory-approval wording were observed and targeted; both original and repeated outputs are retained. Human naturalness/persona/continuity/credibility/empathy/boundary scores remain **pending**. Coverage is sampled, not every scenario for every character; see [review queue and outputs](persona-evaluation-v0.6.md).
+
+The v0.6 loopback server is running at http://127.0.0.1:8765/ with the existing real DeepSeek configuration in `local_demo`. Consistent pre-migration backup was retained; SQLite integrity and foreign keys passed, and messages/turns/approved memories/users were unchanged across migration. **Start a new session to use the new profile**; older sessions intentionally retain their old snapshot and can show a missing structured profile.
+
+Frontend compilation does not establish current browser/360px or physical-phone acceptance: browser automation was unavailable. The APK status is tracked in [app delivery](app-delivery.md). No public deployment, HR message or store release occurred. Official GitHub mechanisms and licensing are recorded in [persona references](persona-github-references-2026-10-10.md); proposed examples/topic selection/cooldowns are future work, not claimed features.
+
+### Next priorities for this checkpoint
+
+1. Review the actual transcript excerpts with the six-dimensional form. In particular recheck overly long profile replies, defensive corrections and whether same-input character differences survive multi-turn conversation. The current 18-request budget is exhausted; no further live calls under it.
+2. Complete a current browser and physical-phone walkthrough: profile tabs, draft preservation, language switching, history snapshots, admin restore and six-score evidence entry.
+3. Use reviewed failures to prioritize original dialogue examples and selected relevant profile details from the GitHub reference study, then the existing response-feedback/triage loop. Do not expand into voice, dynamic avatars or automatic outreach.
+
+## Historical v0.5 milestone
 
 **v0.5 owner data lifecycle.** Account mode now provides current-password reauthentication, complete-row JSON export within an explicit 16 MiB limit, exact-confirmation account erasure, attributable-audit cleanup, late-run guards, startup/hourly-on-request security-record retention, and a consistent synthetic backup/recovery drill. See [lifecycle inventory](account-data-lifecycle.md), [recovery limits](data-backup-recovery.md), and the [v0.5 iteration record](iteration-2026-10-09-v0.5.md).
 
@@ -50,7 +68,7 @@ Code snapshot `9679f81` passed [cloud framework CI](https://github.com/FOWEPJF25
 
 Recorded commands/results and source links: [evidence](evidence.md), [evaluation](evaluation.md), [memory](memory.md), [DataAgent](data-agent.md), [user interface](user-app.md), [app delivery](app-delivery.md).
 
-## Next highest priorities
+## Historical v0.5 next priorities (superseded by v0.6 above)
 
 1. Add response feedback with authorized turn references, permissioned triage and regression linkage as the next bounded product loop. The v0.5 owner lifecycle is implemented; larger exports, password recovery, backup TTL and deletion-ledger replay remain explicit readiness gaps.
 2. Human-review the actual DeepSeek transcripts and expand the existing quality outlines, including gentle-romance consistency, memory conflict and adversarial cases. Fix a measured weakness and rerun the versioned samples; do not convert execution completion into a quality score.

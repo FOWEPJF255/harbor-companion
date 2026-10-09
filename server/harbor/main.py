@@ -79,7 +79,7 @@ def create_app(settings=None, provider=None):
     provider = provider or (MockProvider() if settings.provider == "mock" else CompatibleProvider(settings))
     agent = Agent(store, provider, settings)
     locks = {}
-    app = FastAPI(title="HarborCompanion", version="0.5.0")
+    app = FastAPI(title="HarborCompanion", version="0.6.0")
     app.state.store = store
     app.state.user_auth = user_auth
     app.state.budgets = budgets
@@ -100,7 +100,8 @@ def create_app(settings=None, provider=None):
         if request.url.path.startswith("/api/") and host not in {"127.0.0.1", "localhost", "testserver", *settings.allowed_hosts}:
             return JSONResponse({"detail": "This prototype is restricted to configured hosts."}, status_code=403, headers={"Cache-Control": "no-store"})
         public_paths = {"/api/status", "/api/health", "/api/characters", "/api/admin/setup-status"}
-        if settings.client_token and request.url.path.startswith("/api/") and request.url.path not in public_paths:
+        public_profile = request.method == "GET" and request.url.path.startswith("/api/characters/") and request.url.path.endswith("/profile") and len(request.url.path.split("/")) == 5
+        if settings.client_token and request.url.path.startswith("/api/") and request.url.path not in public_paths and not public_profile:
             supplied = request.headers.get("x-harbor-access", "")
             if not secrets.compare_digest(supplied, settings.client_token):
                 return JSONResponse({"detail": "Demo access code is required."}, status_code=403, headers={"Cache-Control": "no-store"})
@@ -135,7 +136,7 @@ def create_app(settings=None, provider=None):
         return owner["id"] if owner else "local:" + (request.client.host if request and request.client else "unknown")
 
     def session_payload(session):
-        return {**{key: value for key, value in session.items() if key not in {"character_prompt", "memory_scope", "owner_user_id"}},
+        return {**{key: value for key, value in session.items() if key not in {"character_prompt", "character_profile", "memory_scope", "owner_user_id"}},
                 "review_access_allowed": bool(session["review_access_allowed"])}
 
     def require(sid, owner):
@@ -169,7 +170,7 @@ def create_app(settings=None, provider=None):
     async def status():
         ready = settings.provider == "mock" or bool(settings.api_base and settings.api_key and settings.model)
         return {"provider": settings.provider, "configured": ready, "model": settings.model if settings.provider != "mock" else None,
-                "stage": "v0.5 controlled app + owner data lifecycle", "quality_evidence": "pending human-reviewed companion-quality evaluation",
+                "stage": "v0.6 fictional character profiles + bounded continuity", "quality_evidence": "pending six-dimension human review",
                 "access_code_required": bool(settings.client_token), "auth_mode": settings.auth_mode,
                 "registration_enabled": settings.auth_mode == "accounts" and settings.registration_enabled}
 
@@ -187,6 +188,13 @@ def create_app(settings=None, provider=None):
     @app.get("/api/characters")
     async def characters():
         return {"items": [public_character(item) for item in store.characters(public=True)]}
+
+    @app.get("/api/characters/{cid}/profile")
+    async def character_profile(cid: str):
+        character = store.character(cid)
+        if not character or not character["enabled"]:
+            raise HTTPException(404, "Character not found")
+        return store.character_profile(cid)
 
     @app.get("/api/sessions")
     async def sessions(ids: str = "", cursor: str | None = Query(default=None, max_length=90), owner=Depends(principal)):
@@ -235,6 +243,11 @@ def create_app(settings=None, provider=None):
     @app.get("/api/sessions/{sid}")
     async def read_session(sid: str, owner=Depends(principal)):
         return {**session_payload(require(sid, owner)), "messages": store.history(sid, 100), "memories": store.memories(sid), "insights": store.insights(sid)}
+
+    @app.get("/api/sessions/{sid}/profile")
+    async def session_profile(sid: str, owner=Depends(principal)):
+        require(sid, owner)
+        return store.session_profile(sid)
 
     @app.post("/api/sessions/{sid}/review-access")
     async def review_access(sid: str, body: ReviewAccessInput, owner=Depends(principal)):

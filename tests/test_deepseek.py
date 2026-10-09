@@ -34,7 +34,7 @@ def run(provider):
 def test_exact_official_host_uses_nonthinking_protocol(base):
     def handle(request):
         payload = json.loads(request.content)
-        assert payload["max_tokens"] == 600
+        assert payload["max_tokens"] == 1200
         assert payload["thinking"] == {"type": "disabled"}
         assert "max_completion_tokens" not in payload
         assert request.url.path in {"/chat/completions", "/v1/chat/completions"}
@@ -51,14 +51,14 @@ def test_exact_official_host_uses_nonthinking_protocol(base):
 def test_other_hosts_keep_generic_compatibility(base):
     def handle(request):
         payload = json.loads(request.content)
-        assert payload["max_completion_tokens"] == 600
+        assert payload["max_completion_tokens"] == 1200
         assert "thinking" not in payload and "max_tokens" not in payload
         return httpx.Response(200, json={"choices": [{"message": {"content": "Legacy fixture"}}]})
 
     assert run(CompatibleProvider(settings(api_base=base), httpx.MockTransport(handle))).content == "Legacy fixture"
 
 
-@pytest.mark.parametrize("finish", ["length", "content_filter", "insufficient_system_resource", "aborted"])
+@pytest.mark.parametrize("finish", ["content_filter", "insufficient_system_resource", "aborted"])
 def test_incomplete_generation_fails_with_safe_metadata(finish):
     payload = completion(content=SENTINEL, finish=finish, reasoning_content=HIDDEN)
     with pytest.raises(ProviderError) as failure:
@@ -194,7 +194,7 @@ def test_live_flow_is_isolated_synthetic_and_unscored(tmp_path, monkeypatch):
         return httpx.Response(200, json=response)
 
     monkeypatch.setattr(module, "CompatibleProvider", lambda supplied: CompatibleProvider(supplied, httpx.MockTransport(handle)))
-    report = asyncio.run(module.evaluate(settings(db_path=str(tmp_path / "must-not-exist.sqlite3"))))
+    report = asyncio.run(module.evaluate(settings(db_path=str(tmp_path / "must-not-exist.sqlite3"), max_output_tokens=600)))
     assert not (tmp_path / "must-not-exist.sqlite3").exists()
     assert len(report["cases"]) == 8 and report["model_calls"] == 10
     assert report["actions"][0]["explicit_confirmation"] is True

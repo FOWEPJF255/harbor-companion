@@ -297,7 +297,8 @@ def run_scenario(context):
         messages = context.provider.inputs[-1]
         context.output.append({"provider_context": messages})
         context.check(len(messages) <= 14, "The model input uses at most 12 history messages plus system and current user messages.")
-        context.check(not any(row["content"] == "synthetic-context-turn-00" for row in messages), "The oldest synthetic turn is outside the bounded context.")
+        context.check(not any(row["content"] == "synthetic-context-turn-00" for row in messages), "The oldest synthetic turn is outside the raw recent-message window.")
+        context.check("synthetic-context-turn-00" in messages[0]["content"], "An attributed older excerpt remains available in the bounded session summary.")
         context.check(any(row["content"] == "synthetic-context-turn-07" for row in messages), "The latest previous user turn is retained.")
     elif scenario in {"pending_not_persisted", "pending_not_recalled", "approved_recall", "shared_approved", "shared_pending"}:
         mid, fact = propose(context, sid)

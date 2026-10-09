@@ -117,7 +117,7 @@ def _safe_turn(row):
     raw = json.loads(row["response"])
     if not isinstance(raw, dict):
         raise ValueError("Invalid stored response")
-    response = {key: _safe_value(raw[key]) for key in ("run_id", "reply", "emotion", "provider", "usage", "latency_ms") if key in raw}
+    response = {key: _safe_value(raw[key]) for key in ("run_id", "reply", "emotion", "provider", "usage", "latency_ms", "completion_status") if key in raw}
     response["trace"] = []
     if not isinstance(raw.get("trace", []), list):
         raise ValueError("Invalid stored trace")
@@ -169,12 +169,13 @@ def export_snapshot(store, owner, token_hash):
         budget.json(user)
         owned_session = "session_id IN (SELECT id FROM sessions WHERE owner_user_id=:owner)"
         sections = [
-            ("sessions", "sessions", ("id", "mode", "created", "character_id", "character_revision", "character_name", "character_greeting", "memory_scope", "language", "review_access_allowed"), "owner_user_id=:owner", None),
+            ("sessions", "sessions", ("id", "mode", "created", "character_id", "character_revision", "character_name", "character_greeting", "character_profile", "memory_scope", "language", "review_access_allowed"), "owner_user_id=:owner", None),
+            ("session_summaries", "session_summaries", ("session_id", "through_message_id", "content", "updated"), owned_session, None),
             ("messages", "messages", ("id", "session_id", "role", "content", "emotion", "created"), owned_session, None),
             ("turns", "turns", ("id", "session_id", "request_id", "provider", "emotion", "latency_ms", "response", "created"), owned_session, _safe_turn),
             ("memory_spaces", "memory_spaces", ("id",), "owner_user_id=:owner", None),
             ("approved_memories", "approved_memories", ("id", "space_id", "content", "created", "updated", "revision"), "space_id IN (SELECT id FROM memory_spaces WHERE owner_user_id=:owner)", None),
-            ("reviews", "reviews", ("id", "session_id", "run_id", "persona_score", "empathy_score", "memory_score", "note", "provider", "created"), owned_session, None),
+            ("reviews", "reviews", ("id", "session_id", "run_id", "persona_score", "empathy_score", "memory_score", "naturalness_score", "continuity_score", "credibility_score", "boundary_score", "schema_version", "evidence", "note", "provider", "created"), owned_session, None),
         ]
         for name, table, columns, predicate, transform in sections:
             budget.append(',"' + name + '":[')

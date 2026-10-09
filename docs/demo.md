@@ -29,3 +29,15 @@ Use a newly provisioned authored-synthetic account on an isolated accounts-mode 
 6. Run `scripts/backup-drill.ps1`. Show integrity, approved-memory preservation and restored-token invalidation in the safe metadata report. Explain that retained backups can contain deleted records and need separate retention/reconciliation.
 
 These steps are a review script. Actual execution evidence is recorded separately in [evidence](evidence.md); an APK build is not a physical-phone walkthrough.
+
+## v0.6 character demonstration
+
+1. On the character list, open each profile before starting: inspect growth, work, skills, interests, flaws and boundaries. Switch language and verify the authored translations and fixed proper names.
+2. Confirm adult status, start a **new** session, and use the current-character profile entry. Ask a profile question through the panel; an existing chat draft should remain intact. Older sessions intentionally keep their old snapshot.
+3. Use the same ordinary daily event with three characters. Review actual replies rather than promising a score. Read the [recorded sample and limitations](persona-evaluation-v0.6.md).
+4. In a disposable synthetic session, use the long-context fixture to inspect source IDs and omission counts. Explain that extraction is lossy and does not approve or share user facts.
+5. In administration, edit one synthetic profile, inspect version history, restore a previous version explicitly, and confirm it creates a new revision while an old session is unchanged.
+6. Grant review access from a synthetic user's session where accounts mode is active. Record six human scores with the exact supporting excerpt for each; leave unreviewed fields unfilled. Legacy scores stay in their own section.
+7. Demonstrate the injected partial-output test offline; do not spend a real request merely to force truncation. Explain the visible incomplete notice and absence of automatic continuation or committed proposals.
+
+These are review steps, not a claim that current mobile/browser UI was visually accepted. The v0.6 live-call ceiling has been reached; future live dialogue is not part of the recorded evaluation budget.

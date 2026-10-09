@@ -4,11 +4,15 @@ import type { AdminAuthMode, AdminView, Character, CharacterInput, Operations, O
 import { readLanguage, storeLanguage, type Language } from '../i18n'
 import { adminTranslator } from './i18n'
 import OperationsPanel from './OperationsPanel'
+import PersonaEditor from './PersonaEditor'
+import PersonaHistory from './PersonaHistory'
+import { emptySixReview, SixReviewFields, type SixReviewInput } from './ReviewFields'
+import { reviewDimensions } from '../persona'
 import './admin.css'
 
 type AdminAppProps = { onExit?: () => void }
 type AuthResponse = { token: string; expires_in: number }
-type ReviewInput = { session_id: string; run_id: string; persona_score: number; empathy_score: number; memory_score: number; note: string }
+type ReviewInput = SixReviewInput
 
 const views: Array<{ id: AdminView; title: string; glyph: string; subtitle: string }> = [
   { id: 'overview', title: '运行总览', glyph: '◈', subtitle: '查看当前后端数据与运行状态' },
@@ -23,7 +27,7 @@ const emptyCharacter = (): CharacterInput => ({
   name: '', tagline: '', description: '', system_prompt: '', greeting: '',
   accent_color: '#b8cbb0', avatar_style: 'nova', enabled: false,
 })
-const emptyReview = (): ReviewInput => ({ session_id: '', run_id: '', persona_score: 3, empathy_score: 3, memory_score: 3, note: '' })
+const emptyReview = emptySixReview
 const shortId = (id: string) => id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id
 
 export default function AdminApp({ onExit }: AdminAppProps) {
@@ -56,6 +60,7 @@ export default function AdminApp({ onExit }: AdminAppProps) {
   const [characters, setCharacters] = useState<Character[]>([])
   const [characterId, setCharacterId] = useState<string | null>(null)
   const [characterForm, setCharacterForm] = useState<CharacterInput | null>(null)
+  const [historyCharacter, setHistoryCharacter] = useState<Character | null>(null)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
@@ -84,6 +89,7 @@ export default function AdminApp({ onExit }: AdminAppProps) {
     setAuthMode(null)
     setLoading(false)
     setCharacterForm(null)
+    setHistoryCharacter(null)
     setPrivacyAcknowledged(false)
     setReviewForm(emptyReview())
     setPassword('')
@@ -247,11 +253,13 @@ export default function AdminApp({ onExit }: AdminAppProps) {
   }
 
   function editCharacter(character?: Character) {
+    setHistoryCharacter(null)
     setCharacterId(character?.id ?? null)
     setCharacterForm(character ? {
       name: character.name, tagline: character.tagline, description: character.description,
       system_prompt: character.system_prompt, greeting: character.greeting,
       accent_color: character.accent_color, avatar_style: character.avatar_style, enabled: character.enabled,
+      ...(character.profile ? {profile: character.profile} : {}),
     } : emptyCharacter())
     setNotice('')
     setError('')
@@ -332,9 +340,11 @@ export default function AdminApp({ onExit }: AdminAppProps) {
           <label>{t('角色提示词')}<textarea className="admin-code-input" value={characterForm.system_prompt} onChange={event => setCharacterForm({ ...characterForm, system_prompt: event.target.value })} required maxLength={6000} rows={7} placeholder={t("定义语气、表达习惯、能力范围；不要写密钥或真实私人信息")} /><small>{t('提示词不能覆盖成年人准入、AI 身份披露及用户确认边界。')}</small></label>
           <label>{t('开场白')}<textarea value={characterForm.greeting} onChange={event => setCharacterForm({ ...characterForm, greeting: event.target.value })} required maxLength={600} rows={3} placeholder={t("例：你好，我是 AI 伙伴 Nova。今天想从哪里开始？")} /></label>
           <div className="admin-form-grid"><label>{t('角色配色')}<div className="admin-color-field"><input type="color" aria-label={t("选择角色配色")} value={characterForm.accent_color} onChange={event => setCharacterForm({ ...characterForm, accent_color: event.target.value })} /><code>{characterForm.accent_color}</code></div></label><label>{t('头像风格')}<select value={characterForm.avatar_style} onChange={event => setCharacterForm({ ...characterForm, avatar_style: event.target.value as CharacterInput['avatar_style'] })}><option value="nova">{t('Nova · 轻柔')}</option><option value="sage">{t('Sage · 平静')}</option><option value="ember">{t('Ember · 温暖')}</option></select></label></div>
+          <PersonaEditor profile={characterForm.profile} language={language} disabled={busy} onChange={profile => setCharacterForm({...characterForm, profile})}/>
           <label className="admin-checkbox"><input type="checkbox" checked={characterForm.enabled} onChange={event => setCharacterForm({ ...characterForm, enabled: event.target.checked })} /><span>{t('发布角色，允许新会话选择')}</span></label><div className="admin-form-actions"><button className="admin-button admin-button-primary" disabled={busy} type="submit">{busy ? t('正在保存…') : t('保存角色')}</button><span className="admin-note">{t('修改会记录新的角色版本。')}</span></div>
         </form></section>}
-        <div className="admin-character-grid">{characters.map(character => <article className="admin-panel admin-character-card" key={character.id}><div className="admin-character-top"><div className={`admin-avatar admin-avatar-${character.avatar_style}`} aria-hidden="true">{character.avatar_style === 'sage' ? '✺' : character.avatar_style === 'ember' ? '✦' : '✧'}</div><span className={`admin-status ${character.enabled ? 'published' : ''}`}>{character.enabled ? t('已发布') : t('已归档')}</span></div><h2>{character.name}</h2><p className="admin-character-tagline">{character.tagline}</p><p className="admin-character-description">{character.description}</p><div className="admin-character-meta"><span>{t('版本')} {character.revision}</span><span>{t('更新')} {formatTime(character.updated)}</span></div><div className="admin-card-actions"><button className="admin-button" disabled={busy} type="button" onClick={() => editCharacter(character)}>{t('编辑人设')}</button><button className="admin-text-button" disabled={busy} type="button" onClick={() => void setCharacterEnabled(character)}>{character.enabled ? t('归档角色') : t('发布角色')}</button></div></article>)}</div>
+        {historyCharacter && <PersonaHistory key={historyCharacter.id} characterId={historyCharacter.id} characterName={historyCharacter.name} currentRevision={characters.find(character => character.id === historyCharacter.id)?.revision ?? historyCharacter.revision} language={language} disabled={busy} request={request} onClose={() => setHistoryCharacter(null)} onRestored={async () => {await loadView('characters')}}/>}
+        <div className="admin-character-grid">{characters.map(character => <article className="admin-panel admin-character-card" key={character.id}><div className="admin-character-top"><div className={`admin-avatar admin-avatar-${character.avatar_style}`} aria-hidden="true">{character.avatar_style === 'sage' ? '✺' : character.avatar_style === 'ember' ? '✦' : '✧'}</div><span className={`admin-status ${character.enabled ? 'published' : ''}`}>{character.enabled ? t('已发布') : t('已归档')}</span></div><h2>{character.name}</h2><p className="admin-character-tagline">{character.tagline}</p><p className="admin-character-description">{character.description}</p><div className="admin-character-meta"><span>{t('版本')} {character.revision}</span><span>{t('更新')} {formatTime(character.updated)}</span></div><div className="admin-card-actions"><button className="admin-button" disabled={busy} type="button" onClick={() => editCharacter(character)}>{t('编辑人设')}</button><button className="admin-text-button" disabled={busy} type="button" onClick={() => {setHistoryCharacter(character); setCharacterForm(null)}}>{language === 'en' ? 'Version history / restore' : '版本历史 / 恢复'}</button><button className="admin-text-button" disabled={busy} type="button" onClick={() => void setCharacterEnabled(character)}>{character.enabled ? t('归档角色') : t('发布角色')}</button></div></article>)}</div>
         {!characters.length && !loading && <div className="admin-empty">{t('暂无角色。新建一个角色，先保存为草稿再发布。')}</div>}
       </>}
 
@@ -346,10 +356,8 @@ export default function AdminApp({ onExit }: AdminAppProps) {
 
       {view === 'reviews' && <>
         <div className="admin-callout"><span aria-hidden="true">◇</span><div><strong>{t('评分用于复盘，不代表已验证的成功率。')}</strong><p>{t('1 分表示明显未达到，3 分表示基本符合，5 分表示在本次观察中表现稳定。模拟回复和真实模型记录要分开解读。')}</p></div></div>
-        <section className="admin-panel"><h2>{t('新增人工评审')}</h2><p className="admin-subtle">{t('账户模式下，评审也需要用户的会话审阅授权。')}</p><form className="admin-form" onSubmit={saveReview}><div className="admin-form-grid"><label>{t('关联会话')}<select value={reviewForm.session_id} onChange={event => setReviewForm({ ...reviewForm, session_id: event.target.value })} required><option value="">{t('选择已观察的会话')}</option>{sessions.map(session => <option key={session.id} value={session.id} disabled={!canReviewSession(session)}>{session.character_name} · {shortId(session.id)} · {session.turn_count} {t('轮')} · {reviewPermission(session)}</option>)}</select></label><label>{t('运行 ID（可选）')}<input value={reviewForm.run_id} onChange={event => setReviewForm({ ...reviewForm, run_id: event.target.value })} maxLength={80} placeholder={t("仅评审某轮时填写运行 ID")} /></label></div><div className="admin-score-grid">{([
-          ['persona_score', t('人设一致性'), t('是否保持设定与 AI 身份')], ['empathy_score', t('回应与共情'), t('是否理解语境，避免空泛劝慰')], ['memory_score', t('记忆使用'), t('是否准确引用已确认的信息')],
-        ] as const).map(([field, label, hint]) => <label key={field}>{label}<select value={reviewForm[field]} onChange={event => setReviewForm({ ...reviewForm, [field]: Number(event.target.value) })}>{[1, 2, 3, 4, 5].map(score => <option key={score} value={score}>{score} / 5</option>)}</select><small>{hint}</small></label>)}</div><label>{t('评审说明')}<textarea value={reviewForm.note} onChange={event => setReviewForm({ ...reviewForm, note: event.target.value })} rows={4} maxLength={2000} required placeholder={t("写具体观察、问题和下一步调整。避免复制真实姓名、联系方式或整段私人聊天。")} /><small>{reviewForm.note.length} {t('/ 2000 字符')}</small></label><button type="submit" disabled={busy || loading || !canReviewSession(sessions.find(session => session.id === reviewForm.session_id))} className="admin-button admin-button-primary">{busy ? t('正在保存…') : t('保存评审')}</button></form></section>
-        <div className="admin-section-heading"><h2>{t('评审记录')}</h2><span>{reviews.length} {t('条已读取记录')}</span></div><div className="admin-review-list">{reviews.map(review => <article className="admin-panel" key={review.id}><div className="admin-panel-heading"><code>{shortId(review.session_id)}</code><span className="admin-status">{review.provider === 'mock' ? t('模拟流程') : review.provider || t('来源未记载')}</span></div><div className="admin-review-scores"><span>{t('人设')} <b>{review.persona_score}/5</b></span><span>{t('共情')} <b>{review.empathy_score}/5</b></span><span>{t('记忆')} <b>{review.memory_score}/5</b></span></div><p className="admin-review-note">{review.note}</p><small className="admin-note">{formatTime(review.created)}{review.run_id ? ` · ${t('运行')} ${shortId(review.run_id)}` : t(' · 会话整体评审')}</small></article>)}</div>{!reviews.length && !loading && <div className="admin-empty">{t('尚无人工评审，完成一段对话后再记录观察。')}</div>}
+        <section className="admin-panel"><h2>{t('新增人工评审')}</h2><p className="admin-subtle">{t('账户模式下，评审也需要用户的会话审阅授权。')}</p><form className="admin-form" onSubmit={saveReview}><div className="admin-form-grid"><label>{t('关联会话')}<select value={reviewForm.session_id} onChange={event => setReviewForm({ ...reviewForm, session_id: event.target.value })} required><option value="">{t('选择已观察的会话')}</option>{sessions.map(session => <option key={session.id} value={session.id} disabled={!canReviewSession(session)}>{session.character_name} · {shortId(session.id)} · {session.turn_count} {t('轮')} · {reviewPermission(session)}</option>)}</select></label><label>{t('运行 ID（可选）')}<input value={reviewForm.run_id} onChange={event => setReviewForm({ ...reviewForm, run_id: event.target.value })} maxLength={80} placeholder={t("仅评审某轮时填写运行 ID")} /></label></div><SixReviewFields value={reviewForm} onChange={setReviewForm} language={language} disabled={busy || loading}/><label>{t('评审说明')}<textarea value={reviewForm.note} onChange={event => setReviewForm({ ...reviewForm, note: event.target.value })} rows={4} maxLength={2000} required placeholder={t("写具体观察、问题和下一步调整。避免复制真实姓名、联系方式或整段私人聊天。")} /><small>{reviewForm.note.length} {t('/ 2000 字符')}</small></label><button type="submit" disabled={busy || loading || !canReviewSession(sessions.find(session => session.id === reviewForm.session_id))} className="admin-button admin-button-primary">{busy ? t('正在保存…') : t('保存评审')}</button></form></section>
+        <div className="admin-section-heading"><h2>{t('评审记录')}</h2><span>{reviews.length} {t('条已读取记录')}</span></div><div className="admin-review-list">{reviews.map(review => <article className="admin-panel" key={review.id}><div className="admin-panel-heading"><code>{shortId(review.session_id)}</code><span className="admin-status">{review.provider === 'mock' ? t('模拟流程') : review.provider || t('来源未记载')}</span></div>{review.schema_version === 2 ? <><p className="admin-note">{language === 'en' ? 'Six-dimension human review · v2' : '六维人工评审 · v2'}</p><div className="admin-review-scores">{reviewDimensions.map(dimension => <span key={dimension.key}>{dimension[language]} <b>{review[dimension.field] == null ? (language === 'en' ? 'Pending' : '待评分') : `${review[dimension.field]}/5`}</b></span>)}</div><details className="admin-review-evidence"><summary>{language === 'en' ? 'Evidence sentences' : '评分依据原句'}</summary>{reviewDimensions.map(dimension => <section key={dimension.key}><strong>{dimension[language]}</strong><p>{review.evidence?.[dimension.key] || (language === 'en' ? 'Not recorded' : '未记载')}</p></section>)}</details></> : <><p className="admin-note">{language === 'en' ? 'Legacy three-dimension review · v1. New dimensions were not scored.' : '历史三维评审 · v1。新增维度当时未评分。'}</p><div className="admin-review-scores"><span>{t('人设')} <b>{review.persona_score == null ? '—' : `${review.persona_score}/5`}</b></span><span>{t('共情')} <b>{review.empathy_score == null ? '—' : `${review.empathy_score}/5`}</b></span><span>{t('记忆')} <b>{review.memory_score == null ? '—' : `${review.memory_score}/5`}</b></span></div><p className="admin-note">{language === 'en' ? 'Naturalness / continuity / credibility / boundaries: pending, not zero.' : '自然度 / 连贯性 / 细节可信度 / 边界：未评分，不是 0 分。'}</p></>}<p className="admin-review-note">{review.note}</p><small className="admin-note">{formatTime(review.created)}{review.run_id ? ` · ${t('运行')} ${shortId(review.run_id)}` : t(' · 会话整体评审')}</small></article>)}</div>{!reviews.length && !loading && <div className="admin-empty">{t('尚无人工评审，完成一段对话后再记录观察。')}</div>}
       </>}
 
       {view === 'provider' && <>

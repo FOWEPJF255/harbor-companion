@@ -50,6 +50,28 @@ class MockProvider:
             observation = json.loads(messages[-1]["content"])
             if "error" in observation:
                 reply = ("The tool could not complete this action: " if english else "工具未完成这次动作：") + observation["error"]
+            elif "profile" in observation and "character_id" in observation:
+                profile = observation.get("profile")
+                if not isinstance(profile, dict) or not isinstance(profile.get("sections"), dict):
+                    reply = f"I am {character_name}, an AI companion. This is a fixed mock reply. This session has no structured character profile; I will not invent one." if english else f"我是 {character_name}，一个 AI 陪伴角色。这是固定演示回复；这个会话没有结构化角色档案，我不会编造缺失的经历。"
+                else:
+                    requested = "growth"
+                    for section, terms in (
+                        ("work", ["工作", "职业", "career", "job", "work"]),
+                        ("skills", ["技能", "擅长", "skill"]),
+                        ("interests", ["爱好", "兴趣", "hobb", "interest"]),
+                        ("flaws", ["缺点", "弱点", "flaw", "weakness"]),
+                        ("boundaries", ["边界", "界限", "boundar"]),
+                    ):
+                        if any(term in user.lower() for term in terms):
+                            requested = section
+                            break
+                    detail = profile["sections"].get(requested, {}).get("en" if english else "zh", "")
+                    name = observation.get("name", character_name)
+                    if any(term in user.lower() for term in ["你是谁", "who are you"]):
+                        reply = f"I am {name}, an AI companion character. This is a fixed mock reply; my character history is fictional." if english else f"我是 {name}，一个 AI 陪伴角色。这是固定演示回复；我的角色经历属于虚构设定。"
+                    else:
+                        reply = f"I am {name}, an AI companion character. This is a fixed mock reply using my fictional character profile: {detail}" if english else f"我是 {name}，一个 AI 陪伴角色。这是固定演示回复，展示我的虚构角色档案：{detail}"
             elif "answer" in observation:
                 reply = observation["answer"]
             elif "memories" in observation:
@@ -64,6 +86,8 @@ class MockProvider:
             return Completion(content=reply)
         if user.startswith("记住：") or user.lower().startswith("remember:"):
             call = {"name": "propose_memory", "arguments": {"content": user.split(":" if ":" in user else "：", 1)[1].strip()}}
+        elif any(term in user.lower() for term in ["你是谁", "自我介绍", "你的成长", "你的教育", "你的求学", "你的爱好", "你的兴趣", "你的经历", "你的档案", "你的工作", "你的技能", "你的缺点", "你的边界", "who are you", "introduce yourself", "your background", "your education", "your hobbies", "your profile", "your career"]):
+            call = {"name": "read_own_profile", "arguments": {}}
         elif any(x in user.lower() for x in ["合成", "synthetic", "demo data"]):
             call = {"name": "analyze_demo_data", "arguments": {"question": user}}
         elif any(x in user.lower() for x in ["记忆", "记得", "remember", "memory"]):
@@ -104,11 +128,14 @@ class CompatibleProvider:
         if not s.api_key:
             raise ProviderError("Provider API key is not configured on the server.")
         official_deepseek = base.hostname == "api.deepseek.com"
+        if isinstance(s.max_output_tokens, bool) or not isinstance(s.max_output_tokens, int):
+            raise ProviderError("The server output-token budget must be an integer.")
+        output_tokens = max(600, min(2000, s.max_output_tokens))
         payload = {"model": s.model, "messages": messages, "tools": tools, "tool_choice": "auto"}
         if official_deepseek:
-            payload.update(max_tokens=600, thinking={"type": "disabled"})
+            payload.update(max_tokens=output_tokens, thinking={"type": "disabled"})
         else:
-            payload["max_completion_tokens"] = 600
+            payload["max_completion_tokens"] = output_tokens
         metadata = {"protocol": "deepseek_official" if official_deepseek else "openai_compatible"}
         try:
             async with httpx.AsyncClient(timeout=s.timeout, transport=self.transport) as client:
@@ -126,10 +153,10 @@ class CompatibleProvider:
             finish = choice.get("finish_reason")
             recognized = {"stop", "tool_calls", "length", "content_filter", "insufficient_system_resource", "aborted"}
             metadata["finish_reason"] = finish if isinstance(finish, str) and finish in recognized else "unknown"
-            if finish in {"length", "content_filter", "insufficient_system_resource", "aborted"}:
-                metadata["failure_class"] = "truncated" if finish == "length" else "generation_failed"
+            if finish in {"content_filter", "insufficient_system_resource", "aborted"}:
+                metadata["failure_class"] = "generation_failed"
                 raise ProviderError("Provider generation did not complete successfully.", metadata)
-            if (official_deepseek and finish not in {"stop", "tool_calls"}) or (finish is not None and finish not in recognized):
+            if (official_deepseek and finish not in {"stop", "tool_calls", "length"}) or (finish is not None and finish not in recognized):
                 raise ValueError("Invalid completion finish reason")
             message = choice["message"]
             if not isinstance(message, dict):
@@ -137,12 +164,22 @@ class CompatibleProvider:
             if message.get("refusal"):
                 metadata["failure_class"] = "refusal"
                 raise ProviderError("Provider declined the request.", metadata)
-            if not isinstance(message.get("content") or "", str):
+            content = message.get("content")
+            if content is not None and not isinstance(content, str):
                 raise ValueError("Invalid completion fields")
             calls = []
             tool_calls = message.get("tool_calls", [])
             if not isinstance(tool_calls, list) or len(tool_calls) > 4:
                 raise ValueError("Invalid tool calls")
+            if finish == "length":
+                # Never parse or execute an incomplete action, even if it looks valid.
+                if tool_calls or message.get("function_call") is not None or not content or not content.strip():
+                    metadata["failure_class"] = "truncated"
+                    raise ProviderError("Provider generation ended before a safe text reply was available.", metadata)
+                metadata["truncated"] = True
+                return Completion(content=content, usage=usage, metadata=metadata)
+            if message.get("function_call") is not None:
+                raise ValueError("Legacy function calls are unsupported")
             for c in tool_calls:
                 if not isinstance(c["id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", c["id"]):
                     raise ValueError("Invalid tool call ID")
@@ -157,7 +194,7 @@ class CompatibleProvider:
             if finish == "tool_calls" and not calls or finish == "stop" and calls:
                 raise ValueError("Finish reason contradicts the tool calls")
             # reasoning_content and raw provider payloads are deliberately discarded.
-            return Completion(content=message.get("content") or "", calls=calls, usage=usage, metadata=metadata)
+            return Completion(content=content or "", calls=calls, usage=usage, metadata=metadata)
         except (httpx.HTTPError, ValueError, KeyError, TypeError, IndexError) as exc:
             # Provider payloads may include credentials or user content; never echo them.
             metadata["failure_class"] = "transport" if isinstance(exc, httpx.HTTPError) else "invalid_response"
