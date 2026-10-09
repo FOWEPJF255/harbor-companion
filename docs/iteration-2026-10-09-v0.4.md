@@ -60,3 +60,9 @@ CUA browser connection failed after recovery attempts. Current account/operation
 Human 1–5 companion-quality scoring remains pending. Execution completion does not establish empathy, sustained romance, memory-conflict handling, adversarial safety or production availability. The DataAgent still uses its labeled fixed synthetic fixture; it does not analyze private chats or arbitrary SQL.
 
 Next: owner-scoped data lifecycle and backup/restore validation; response feedback and regression linkage; approved evaluation-data import; human quality and physical-phone checks. Public/enterprise serving remains blocked by the outstanding readiness gates, not by a claim that the prototype is already production ready.
+
+## Saved release evidence
+
+`9679f81` was committed and pushed to `FOWEPJF255/harbor-companion`. Cloud framework CI and Android packaging succeeded; the v0.4 debug APK was downloaded and hash verified. An initial local checksum attempt occurred before the download process completed and found no checksum file; the check was repeated successfully after completion. No checksum match was claimed for that earlier attempt. The [packaging record](app-delivery.md) contains the final hash, size and artifact ID.
+
+The project-owned local API process was restarted from the saved source with official DeepSeek configuration. The synthetic account/operations test server was stopped. Real `.env`, database/migration backup, local reports and downloaded APKs remain ignored. Before source publication, 51 staged files were checked against the actual provider key and common credential patterns; no match or runtime-data path was found.

@@ -70,3 +70,5 @@ Date: 2026-10-09, Asia/Shanghai. See the [complete iteration and failure/repair 
 - Private SQLite migration snapshot and server-side credentials remain outside Git. The local backend now reports `openai_compatible`, `deepseek-flash`, configured=true; health checks database readiness without probing/billing a provider.
 
 This release is an account/operations engineering foundation. Complete export/account deletion, retention/recovery, production ingress/load, human semantic quality and physical-phone acceptance remain open. No commercial/user-count or production-grade claim follows from these checks.
+
+Source `9679f81`: [cloud framework checks](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875932171) succeeded. [Android debug build](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875934424) succeeded; downloaded APK size 4,324,952 bytes and SHA-256 `e7fdaec8d92d6b6efa492dd21323e3cdb46ae9c32c353ca081e3717bcca0a7fe` matched the cloud checksum. A scan of every APK ZIP entry confirmed the actual local provider key was absent. See [app delivery](app-delivery.md) for artifact ID and limits.

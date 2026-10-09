@@ -21,6 +21,8 @@ Final full regression: **266 passed**, one existing Starlette/httpx deprecation 
 
 User-account frontend compilation and ten grouped synthetic HTTP integration checks passed. Browser automation was unavailable after recovery attempts; current account UI interactions and the new 390px layout have not been visually accepted. Prior v0.3/bilingual walkthroughs are historical evidence only.
 
+Code snapshot `9679f81` passed [cloud framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875932171) and [Android compilation](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875934424). The downloaded `data/releases/Harbor-0.4.0-debug.apk` matches its cloud SHA-256. [Packaging details](app-delivery.md) distinguish compilation from phone/public-release evidence. The local real-provider backend is running at http://127.0.0.1:8765/ in the loopback `local_demo` profile; account profile activation requires the owner's chosen user credentials.
+
 ### Earlier v0.3 baseline
 
 | Acceptance area | Implemented evidence | Actual check | Remaining boundary |
