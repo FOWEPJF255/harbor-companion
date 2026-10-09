@@ -51,7 +51,9 @@ The backup wrapper was run twice on separately authored synthetic fixtures. The 
 
 ## Saved artifacts and limits
 
-GitHub/Android build IDs, source snapshot, APK checksum and download are recorded in [app delivery](app-delivery.md) when those operations finish. This file's local-check table does not substitute for cloud or phone evidence. Runtime database, backups, downloads, reports and `.env` remain ignored; staged files/bundles are checked for common credential patterns and the actual locally configured provider secret without printing it.
+Source `930fff8d19182246226e4c75e5b260ed79b5df49` was committed and pushed to `FOWEPJF255/harbor-companion`. [Cloud framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897562260) passed 321 tests in 53.51 seconds, one existing warning, 50/50 synthetic fixtures and the frontend build. [Android compilation](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897573260) succeeded; the downloaded v0.5 APK's checksum matched the cloud record. [App delivery](app-delivery.md) records its exact size/hash/artifact ID.
+
+This file's local-check table does not substitute for cloud or phone evidence. Runtime database, backups, downloads, reports and `.env` remain ignored. All 39 staged text files passed the private/runtime-path and common credential-pattern review; staged files, the frontend and every downloaded APK entry also passed exact comparison against the locally configured provider secret without printing it. The documentation follow-up is saved separately from the compiled source snapshot.
 
 The earlier eight-scenario/ten-request actual DeepSeek record remains the real-provider evidence. This iteration adds no human empathy/persona score, new API transcript, customer count, commercial deployment, HR outcome or SLA. Retained snapshots/downloads/provider copies need their own retention; logical deletion does not establish physical or cryptographic erasure.
 

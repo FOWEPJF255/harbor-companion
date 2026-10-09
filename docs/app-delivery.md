@@ -14,14 +14,26 @@ A browser-installable PWA is a convenient secondary entry. It is not presented a
 | PWA manifest, original icons, installation guidance | Source implemented | Serve over HTTPS and check on actual supported devices |
 | Public-asset service worker and offline explanation | Source implemented | Browser device review; no offline chat |
 | Capacitor Android project | Generated with Capacitor 8.5.3; cloud compilation succeeded | Reachable HTTPS backend and phone review |
-| Android APK | **v0.4 debug APK produced, downloaded and hash checked** by [cloud build](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875934424) | Configure backend/accounts, install, and review on a physical phone |
+| Android APK | **v0.5 debug APK produced, downloaded and hash checked** by [cloud build](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897573260) | Configure backend/accounts, install, and review on a physical phone |
 | Android store release | **Not published** | Release signing, privacy information, store review |
 | iOS project / IPA | **Not generated / not produced** | macOS, Xcode, Apple signing, actual iPhone review |
 | Real model conversations | Eight synthetic scenarios, ten actual official DeepSeek requests recorded | Human quality scoring and deeper romance/adversarial review |
 
-`cap add android` generated and synchronized the original Android source project. The v0.2 packaging run compiled commit `8576f10`. The latest run compiles `9679f81` using Java 21 and Android SDK 36; no SDK was installed locally. Android compilation and [framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875932171) are separate checks. No emulator or physical-phone validation has been performed.
+`cap add android` generated and synchronized the original Android source project. The v0.2 packaging run compiled commit `8576f10`. The latest run compiles `930fff8` using Java 21 and Android SDK 36; no SDK was installed locally. Android compilation and [framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897562260) are separate checks. No emulator or physical-phone validation has been performed.
 
-## Latest v0.4 APK, 2026-10-09
+## Latest v0.5 APK, 2026-10-09
+
+- Source: `930fff8d19182246226e4c75e5b260ed79b5df49`; version name `0.5.0`, version code `4`.
+- Compiler: [Android run 37897573260](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897573260), successful; package job 07:11:08–07:12:52 UTC (1m44s).
+- Local artifact: `data/releases/Harbor-0.5.0-debug.apk`, ignored by Git; **4,328,380 bytes**.
+- SHA-256: `4de651923c9b1e4a6322b6fc7451278e7cc655699857519fdf79b526a0937d58`, matched the downloaded cloud checksum.
+- Artifact: `harbor-android-debug-4`, GitHub ID `11601091838`, retention 14 days. Raw downloaded files are preserved under `data/releases/v0.5-cloud-37897573260`.
+- Bundle adds bilingual account export/deletion controls and current-password confirmation to the existing account/memory/operations interface. Server lifecycle routes require the matching backend revision.
+- No backend address or credentials were supplied to the compiler. An exact comparison across every APK ZIP entry found no copy of the actual locally configured provider secret; its value was not printed.
+- [Cloud framework checks](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897562260) passed: 321 tests in 53.51 seconds, one existing dependency warning, 50/50 synthetic evaluator and frontend build.
+- Enter a phone-reachable HTTPS backend/access code and ordinary user credentials at runtime. No public backend was deployed. Native downloads, installation, keyboard/back behavior, rotation, reconnect and account switching still require physical-phone acceptance.
+
+## Historical v0.4 APK, 2026-10-09
 
 - Source: `9679f814e15ade67096512d0e306106edba5b2ff`; version name `0.4.0`, version code `3`.
 - Compiler: [Android run 37875934424](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37875934424), successful; package job 02:43:48–02:45:19 UTC (1m31s).

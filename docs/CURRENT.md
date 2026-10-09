@@ -12,6 +12,8 @@ Final local regression: **321 passed**, one existing Starlette/httpx warning, **
 
 The v0.5 local backend is running at http://127.0.0.1:8765/ in the `local_demo` profile with the existing DeepSeek configuration; status, database readiness and HTTP 200 for the rebuilt frontend were checked. Account features require the owner's deliberately provisioned credentials and `accounts` profile. Packaging status is recorded separately in [app delivery](app-delivery.md); a newly compiled APK is not a physical-phone or public-service acceptance result.
 
+Source `930fff8` passed [cloud framework CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897562260) and [Android compilation](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897573260). The downloaded `data/releases/Harbor-0.5.0-debug.apk` is 4,328,380 bytes; SHA-256 `4de651923c9b1e4a6322b6fc7451278e7cc655699857519fdf79b526a0937d58` matches the cloud checksum. The actual local provider key was absent from every APK ZIP entry.
+
 ### Historical v0.4 checkpoint
 
 **v0.4 account/operations foundation and initial actual DeepSeek execution evidence.** The owner identified the API as official DeepSeek; its documented base URL and `deepseek-flash` are now configured locally. Eight authored synthetic scenarios made ten real requests, with no execution failures and 9,544 provider-reported total tokens. Human scores remain pending. There is no public deployment, HR message, physical-phone acceptance, store release, commercial result or customer-count claim.

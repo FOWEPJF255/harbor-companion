@@ -10,6 +10,7 @@ Date: 2026-10-09, Asia/Shanghai. [Complete iteration, commands and repair record
 - Frontend TypeScript/Vite production build passed. Loopback v0.5 backend, database readiness and rebuilt frontend HTTP 200 checked; current visual/native download acceptance remains pending after browser automation failure.
 - Account export/deletion, byte/concurrency bounds, cross-owner preservation, rollback, late/queued model protection, audit provenance and retention are covered by synthetic tests. No real owner's account was deleted and no private database was restored.
 - Existing actual DeepSeek evidence remains eight authored scenarios/ten real requests from v0.4, with human quality scores pending. Packaging evidence is maintained in [app delivery](app-delivery.md).
+- Saved source `930fff8`: [cloud checks](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897562260) passed 321 tests in 53.51 seconds, 50/50 fixtures and frontend build. [Android packaging](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37897573260) succeeded; the downloaded 4,328,380-byte v0.5 APK matched cloud SHA-256 `4de651923c9b1e4a6322b6fc7451278e7cc655699857519fdf79b526a0937d58`. No actual local provider secret appeared in its ZIP entries. Phone/download interaction remains unverified.
 
 ## Initial framework record
 
