@@ -41,3 +41,11 @@ Versioned schema behavior is described in [data migration](data-migration.md), p
 ## Remaining work
 
 Human six-dimensional review of actual samples, evidence-driven follow-up of weak responses, accessible browser and physical-phone walkthrough, and the previously planned response-feedback/triage loop. Voice, dynamic avatars, autonomous messaging, production tenancy and commercial claims are outside this increment.
+
+## Final observed results, 2026-10-10
+
+Local full regression: 461 passed in 68.95s; one existing dependency warning. Separate application evaluator: 50/50, zero API calls. Frontend build passed. Cloud CI on source `1b20ef7`: 461 passed in 54.25s, same warning; 50/50 evaluator and web build passed. The first local full run had 4 failures/455 passes: three new mock-profile replies omitted the explicit mock marker, and the export test expected the old top-level inventory. The mock disclosure and inventory check were repaired; owner-summary export/erasure coverage was added. No failure was reclassified as a model-quality success.
+
+The initial real sample used 15 requests and exposed unsupported user-event guessing, misleading chat-only approval wording, and verbose profile corrections. Prompt rules were adjusted; two targeted repeats consumed the remaining 3 requests. Both outputs are retained in [the review queue](persona-evaluation-v0.6.md). Total: 18 requests, 39,058 provider-reported tokens, no execution failures. Human scores remain pending; profile verbosity has not been rechecked after that prompt adjustment.
+
+Local migration passed integrity/foreign-key checks and retained messages, turns, approved-memory and user rows unchanged. Local v0.6 status/health/homepage responded correctly. APK compilation, download/hash verification and actual-key absence checks passed; see [app delivery](app-delivery.md). The [GitHub study](persona-github-references-2026-10-10.md) records verified upstream mechanisms and clearly separates future suggestions from shipped behavior.

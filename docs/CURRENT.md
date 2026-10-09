@@ -16,6 +16,9 @@ The v0.6 loopback server is running at http://127.0.0.1:8765/ with the existing 
 
 Frontend compilation does not establish current browser/360px or physical-phone acceptance: browser automation was unavailable. The APK status is tracked in [app delivery](app-delivery.md). No public deployment, HR message or store release occurred. Official GitHub mechanisms and licensing are recorded in [persona references](persona-github-references-2026-10-10.md); proposed examples/topic selection/cooldowns are future work, not claimed features.
 
+
+Source `1b20ef7` passed [cloud CI](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37989539500) (461 tests, 54.25s) and [Android compilation](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37989553959). Downloaded `data/releases/Harbor-0.6.0-debug.apk` is 4,340,920 bytes; SHA-256 `90fe6e4872dfd72c809ec2c8a0e138df4a78b93f2807bcca29528298f12e30c0` matches the cloud checksum, and the local provider secret was absent from all ZIP entries.
+
 ### Next priorities for this checkpoint
 
 1. Review the actual transcript excerpts with the six-dimensional form. In particular recheck overly long profile replies, defensive corrections and whether same-input character differences survive multi-turn conversation. The current 18-request budget is exhausted; no further live calls under it.
