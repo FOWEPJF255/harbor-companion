@@ -6,6 +6,10 @@ Use a small management plane within the existing FastAPI/SQLite app. A separate 
 
 This is a prototype management system, not a multi-tenant business platform. Third-party CRM, messaging accounts, HR outreach, and model-key entry in the browser are not included.
 
+## Interface language
+
+Use the Chinese/English selector on the login card or in the studio sidebar. It shares the companion app's persisted preference and updates interface copy, error/status messages, accessible labels and date formatting without ending a login or clearing drafts. Existing character text, conversation content and review notes are not translated or rewritten. If browser storage is unavailable, switching still works within the current page, but persistence cannot be guaranteed.
+
 ## Open and initialize
 
 1. Run `scripts/start.ps1` with the default local configuration.
@@ -25,16 +29,17 @@ Initialize the administrator **before** enabling additional remote hosts. Remote
 | Sessions | Summary list and explicitly opened details | Login required; raw content is not fetched in the overview/list; only recent messages/turns are returned |
 | Human review | Persona, empathy, memory scores plus a concrete note | Stored as human annotations, tied to actual session/provider metadata; mock scores cannot prove LLM quality |
 | Provider status | Provider, model, configured flag, whether a credential is present | The model key is neither returned nor editable in the browser |
+| Operations | Active/concurrency/request limits and up to 100 redacted audit events | Single-process counters reset after restart; no raw dialogue or tool content |
 
 Each character update increments its revision. New conversations use the latest enabled revision. Existing conversations keep the character name, prompt, and greeting snapshot from creation. Archiving removes a character from new-session choices without rewriting its prior conversations.
 
-Conversation memory is per session. An unapproved proposal is not included in long-term memory retrieval, while the original text can still exist in recent message context.
+Pending proposals are per session. Approved memories belong to an explicitly shared memory space within the same user. An unapproved proposal is not included in long-term memory retrieval, while the original text can still exist in recent message context.
 
 Clearing conversation history also clears its human reviews, since review notes can quote the source messages. Approved memories remain only when the user chooses the history-only action. Full session deletion cascades to messages, memories, turns, and reviews.
 
 ## Privacy and access
 
-- Administrators can inspect this server's conversations. The app is intended for one owner's synthetic/private demo. Do not collect unrelated people's messages without a defined consent and retention policy.
+- In accounts mode, administrators cannot read conversations or annotate them until the session owner explicitly grants reviewer access. Withdrawal hides further raw reads and deletes existing review notes. Local-demo records remain the single owner's legacy demonstration surface and are not automatically assigned to accounts.
 - The console first lists summaries. Opening details is an explicit action following the privacy notice.
 - API responses have `Cache-Control: no-store`. The PWA service worker does not cache API calls, conversations, or tokens.
 - There is no bulk private-data export or generic SQL/browser/shell tool.
@@ -44,6 +49,6 @@ Clearing conversation history also clears its human reviews, since review notes 
 
 ## API map
 
-`/api/admin/setup-status`, `/bootstrap`, `/login`, `/logout`, `/overview`, `/characters`, `/sessions`, `/reviews`, `/provider-status`.
+`/api/admin/setup-status`, `/bootstrap`, `/login`, `/logout`, `/overview`, `/characters`, `/sessions`, `/reviews`, `/provider-status`, `/operations`, `/users` (trusted account provisioning; never returns a token or password).
 
 All management data operations require a signed, short-lived Bearer token. Remote deployments additionally require the deployment's demo access code in `X-Harbor-Access` for protected APIs. Neither is the model API key.

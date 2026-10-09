@@ -1,13 +1,15 @@
 import { isNativeApp } from './AppInstall'
+import { readLanguage, type Language } from './i18n'
 
 type Connection = {baseUrl: string; accessToken: string}
 const STORAGE_KEY = 'harbor-connection-v1'
 
 export class ApiError extends Error {
   status: number
+  sourceMessage: string
   trace: Array<Record<string, unknown>> = []
   failureReason = ''
-  constructor(status: number, message: string) {super(localize(message)); this.name = 'ApiError'; this.status = status}
+  constructor(status: number, message: string) {super(localizeApiMessage(message)); this.name = 'ApiError'; this.status = status; this.sourceMessage = message}
 }
 
 const englishMessages: Record<string, string> = {
@@ -17,17 +19,19 @@ const englishMessages: Record<string, string> = {
   '演示访问码过长，请检查输入。': 'The demo access code is too long.',
   '请先在“我的”配置手机可访问的 HTTPS 后端地址。': 'Configure a reachable HTTPS backend in Me first.',
   '输入不符合要求，请检查各字段；管理员密码至少 12 位。': 'Check the input fields. Administrator passwords need at least 12 characters.',
+  '输入不符合要求，请检查各字段。': 'Check the input fields and try again.',
   '服务暂时不可用，请稍后重试。': 'Service unavailable. Please try again later.',
   '连接等待超时，请重试。聊天重试会沿用原请求编号，避免重复保存。': 'Connection timed out. Retrying chat keeps the same request ID to prevent duplicate turns.',
   '无法连接后端，请检查地址、网络和后端是否启动。': 'Cannot reach the backend. Check the address, network, and running service.',
   '当前离线，请恢复网络后重试。消息没有在离线时排队发送。': 'You are offline. Reconnect and retry; messages have not been queued.',
+  '用户登录已失效，请重新登录。': 'Your user login has expired. Sign in again.',
 }
 
-function localize(message: string): string {
-  let english = false
-  try {english = localStorage.getItem('harbor-language') === 'en'} catch { /* Prefer Chinese if storage is unavailable. */ }
-  if (!english) return message
-  return englishMessages[message] || Object.entries(errors).find(([, translated]) => translated === message)?.[0] || message
+export function localizeApiMessage(message: string, language: Language = readLanguage()): string {
+  const original = Object.entries(englishMessages).find(([, english]) => english === message)?.[0] || message
+  const chinese = errors[original] || original
+  if (language === 'zh') return chinese
+  return englishMessages[chinese] || Object.entries(errors).find(([, translated]) => translated === chinese)?.[0] || chinese
 }
 
 function validateBase(value: string): string {
@@ -70,6 +74,17 @@ export function getSessionKey(baseKey: string): string {
 }
 
 const errors: Record<string, string> = {
+  'User login required.': '用户登录已失效，请重新登录。',
+  'Invalid user credentials.': '用户名或密码不正确。',
+  'Public registration is disabled.': '自助注册已关闭，请联系运营方开通账号。',
+  'Invalid authentication input.': '登录字段不符合要求：用户名需为 3–40 位字母、数字、下划线、点或连字符；密码需为 12–128 位。',
+  'Adult confirmation is required.': '请先确认已满 18 岁。',
+  'Unable to register using these details.': '无法使用这些资料注册，请检查输入或联系运营方。',
+  'Too many authentication attempts; try again later.': '登录尝试较多，请稍后再试。',
+  'Authentication is temporarily unavailable.': '账户服务暂时不可用，请稍后重试。',
+  'Backend does not expose a supported account mode.': '后端未返回受支持的账户模式，请更新后端服务。',
+  'Invalid user authentication response.': '后端登录响应不完整，请联系运营方检查账户服务。',
+  'Account authentication is unavailable in local demo mode.': '本机演示模式不提供普通用户账户登录。',
   'Administrator login required.': '管理员登录已失效，请重新登录。',
   'Invalid administrator credentials.': '管理员账号或密码不正确。',
   'Initialize the administrator on the server\'s localhost browser.': '请在后端服务器本机浏览器初始化管理员。',
@@ -90,9 +105,18 @@ const errors: Record<string, string> = {
   'Adult confirmation is required for this prototype.': '请确认已满 18 岁后再开始。',
   'Memory limit reached; remove older memories first.': '这个会话已达到记忆上限，请先整理旧记忆。',
   'Turn does not belong to this session': '请选择当前会话中的回复记录。',
+  'Invalid session cursor': '会话分页入口已失效，请刷新列表。',
+  'Too many session handles': '会话入口数量过多，请整理本设备记录。',
+  'Session limit reached; remove older sessions first.': '已达到当前账户的会话上限，请先删除不再需要的会话。',
+  'Message must not be blank': '请填写非空消息后再发送。',
+  'Memory must not be blank': '请填写非空记忆后再保存。',
+  'This session is busy; try again later.': '当前会话正在处理其他请求，请稍后重试。',
+  'Request budget unavailable; try again later.': '当前请求额度暂不可用，请稍后重试。',
+  'Chat request limit reached; try again in one minute.': '本分钟请求较多，请一分钟后再试。',
+  'All model run slots are busy; try again later.': '模型处理位置暂时已满，请稍后重试。',
 }
 
-export async function api<T>(path: string, method = 'GET', body?: unknown, token?: string): Promise<T> {
+export async function api<T>(path: string, method = 'GET', body?: unknown, token?: string, options: {signal?: AbortSignal} = {}): Promise<T> {
   const connection = getConnection()
   const base = validateBase(connection.baseUrl)
   if (isNativeApp() && !base) throw new ApiError(0, '请先在“我的”配置手机可访问的 HTTPS 后端地址。')
@@ -101,6 +125,9 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, token
   if (token) headers.Authorization = `Bearer ${token}`
   if (connection.accessToken) headers['X-Harbor-Access'] = connection.accessToken
   const controller = new AbortController()
+  const abort = () => controller.abort()
+  if (options.signal?.aborted) controller.abort()
+  else options.signal?.addEventListener('abort', abort, {once: true})
   const timer = window.setTimeout(() => controller.abort(), 60_000)
   try {
     const response = await fetch(`${base}/api${path}`, {method, headers, signal: controller.signal,
@@ -108,8 +135,8 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, token
     if (!response.ok) {
       const detail = await response.json().catch(() => ({detail: ''}))
       const message = typeof detail.detail === 'string'
-        ? (errors[detail.detail] || (response.status === 401 ? '管理员登录已失效，请重新登录。' : detail.detail))
-        : '输入不符合要求，请检查各字段；管理员密码至少 12 位。'
+        ? (errors[detail.detail] || (response.status === 401 ? path.startsWith('/admin') ? '管理员登录已失效，请重新登录。' : '用户登录已失效，请重新登录。' : detail.detail))
+        : path.startsWith('/admin') ? '输入不符合要求，请检查各字段；管理员密码至少 12 位。' : '输入不符合要求，请检查各字段。'
       const error = new ApiError(response.status, message || '服务暂时不可用，请稍后重试。')
       if (Array.isArray(detail.trace)) error.trace = detail.trace
       if (typeof detail.failure_reason === 'string') error.failureReason = detail.failure_reason
@@ -122,5 +149,6 @@ export async function api<T>(path: string, method = 'GET', body?: unknown, token
     throw new ApiError(0, navigator.onLine ? '无法连接后端，请检查地址、网络和后端是否启动。' : '当前离线，请恢复网络后重试。消息没有在离线时排队发送。')
   } finally {
     window.clearTimeout(timer)
+    options.signal?.removeEventListener('abort', abort)
   }
 }

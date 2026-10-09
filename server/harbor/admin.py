@@ -63,6 +63,10 @@ class ReviewInput(BaseModel):
         return value.strip()
 
 
+class ProvisionUserInput(Credentials):
+    adult_confirmed: Literal[True]
+
+
 def encode(data):
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
@@ -120,16 +124,30 @@ class AdminAuth:
             raise HTTPException(401, "Administrator login required.") from None
 
 
-def admin_router(store, settings):
+def admin_router(store, settings, user_auth=None, budgets=None):
     router = APIRouter(prefix="/api/admin", tags=["management"])
     auth = AdminAuth(store, settings.admin_token_minutes)
+
+    async def credentials(request: Request):
+        from pydantic import ValidationError
+        try:
+            return Credentials.model_validate(await request.json())
+        except (ValidationError, ValueError, TypeError):
+            raise HTTPException(422, "A valid username and a 12–128 character password are required.") from None
+
+    def require_review_access(sid):
+        session = store.session(sid)
+        if not session:
+            raise HTTPException(404, "Session not found")
+        if settings.auth_mode == "accounts" and (not session["owner_user_id"] or not session["review_access_allowed"]):
+            raise HTTPException(403, "The user has not allowed reviewer access to this conversation.")
 
     @router.get("/setup-status")
     async def setup_status():
         return {"initialized": bool(store.administrator()), "can_initialize": not bool(settings.allowed_hosts)}
 
     @router.post("/bootstrap")
-    async def bootstrap(body: Credentials, request: Request):
+    async def bootstrap(request: Request, body=Depends(credentials)):
         # The first administrator can only be created on the backend machine.
         if (settings.allowed_hosts or not request.client or request.client.host not in {"127.0.0.1", "::1", "testclient"}
                 or request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}):
@@ -147,7 +165,7 @@ def admin_router(store, settings):
             return auth.issue(body.username)
 
     @router.post("/login")
-    async def login(body: Credentials, request: Request):
+    async def login(request: Request, body=Depends(credentials)):
         auth.rate_limit(request)
         account = store.administrator()
         # A fixed dummy salt keeps unknown-user requests on the same slow path.
@@ -163,7 +181,7 @@ def admin_router(store, settings):
 
     @router.get("/overview", dependencies=[Depends(auth.require)])
     async def overview():
-        return {**store.overview(), "scope": "all sessions on this single-owner server",
+        return {**store.overview(), "scope": "aggregate counts on this server; dialogue access requires user permission in accounts mode",
                 "quality_evidence": "Human reviews are annotations; mock scores do not establish model quality."}
 
     @router.get("/characters", dependencies=[Depends(auth.require)])
@@ -186,24 +204,52 @@ def admin_router(store, settings):
     async def sessions():
         return {"items": store.list_sessions(), "limit": 100, "scope": "summary only"}
 
-    @router.get("/sessions/{sid}", dependencies=[Depends(auth.require)])
-    async def session_details(sid: str):
+    @router.get("/sessions/{sid}")
+    async def session_details(sid: str, account=Depends(auth.require)):
+        require_review_access(sid)
         rows = store.list_sessions([sid])
         if not rows:
             raise HTTPException(404, "Session not found")
+        store.audit_event("admin:" + account["sub"], "reviewer_read", sid)
         return {"session": rows[0], "messages": store.history(sid, 100), "memories": store.memories(sid),
                 "turns": store.turn_metadata(sid), "scope": "up to 100 recent messages and 100 recent turns"}
 
     @router.get("/reviews", dependencies=[Depends(auth.require)])
     async def reviews():
-        return {"items": store.reviews(), "limit": 100}
+        return {"items": store.reviews(permitted_only=settings.auth_mode == "accounts"), "limit": 100}
 
-    @router.post("/reviews", dependencies=[Depends(auth.require)])
-    async def add_review(body: ReviewInput):
+    @router.post("/reviews")
+    async def add_review(body: ReviewInput, account=Depends(auth.require)):
+        require_review_access(body.session_id)
         try:
-            return store.save_review(body.model_dump())
+            result = store.save_review(body.model_dump())
+            store.audit_event("admin:" + account["sub"], "review_added", body.session_id)
+            return result
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+
+    @router.post("/users")
+    async def provision_user(request: Request, account=Depends(auth.require)):
+        # Manual validation avoids echoing passwords in FastAPI's default 422 response.
+        from pydantic import ValidationError
+        try:
+            body = ProvisionUserInput.model_validate(await request.json())
+        except (ValidationError, ValueError, TypeError):
+            raise HTTPException(422, "Username, a 12–128 character password, and adult confirmation are required.") from None
+        if settings.auth_mode != "accounts" or user_auth is None:
+            raise HTTPException(409, "User accounts are not enabled on this server.")
+        try:
+            result = await user_auth.provision(body.username, body.password, body.adult_confirmed)
+        except ValueError:
+            raise HTTPException(422, "The account could not be provisioned; check the username and credentials.") from None
+        store.audit_event("admin:" + account["sub"], "user_provisioned", result["id"])
+        return {"user": result}
+
+    @router.get("/operations", dependencies=[Depends(auth.require)])
+    async def operations():
+        return {"budgets": budgets.snapshot() if budgets else {}, "audit": store.audit_events(100),
+                "audit_retention_days": settings.audit_retention_days,
+                "scope": "bounded process metrics and redacted audit metadata; no dialogue or tool content"}
 
     @router.get("/provider-status", dependencies=[Depends(auth.require)])
     async def provider_status():
@@ -218,6 +264,6 @@ def admin_router(store, settings):
             safe_base = ""
         return {"provider": settings.provider, "configured": settings.provider == "mock" or bool(settings.api_base and settings.model and settings.api_key),
                 "model": settings.model if settings.provider != "mock" else None, "api_base": safe_base,
-                "credentials_set": bool(settings.api_key), "quality_evidence": "pending real-model evaluation"}
+                "credentials_set": bool(settings.api_key), "quality_evidence": "pending human-reviewed companion-quality evaluation"}
 
     return router

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .characters import SEEDS
+from .user_auth import UserAuth
 
 
 def now():
@@ -24,6 +25,7 @@ class Store:
         self._pending_lock = RLock()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
+            UserAuth.ensure_schema(db)
             db.executescript("""
             CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, mode TEXT NOT NULL, created TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
@@ -50,6 +52,9 @@ class Store:
               space_id TEXT NOT NULL REFERENCES memory_spaces(id) ON DELETE CASCADE,
               content TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL, revision INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS approved_memory_space ON approved_memories(space_id,created);
+            CREATE TABLE IF NOT EXISTS audit_events(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT NOT NULL,
+              target_id TEXT,metadata TEXT NOT NULL,created TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS audit_created ON audit_events(created);
             """)
             # Existing local sessions survive the additive migration and keep their original persona.
             columns = {row["name"] for row in db.execute("PRAGMA table_info(sessions)")}
@@ -61,9 +66,13 @@ class Store:
                 "character_greeting": "TEXT NOT NULL DEFAULT ''",
                 "memory_scope": "TEXT REFERENCES memory_spaces(id)",
                 "language": "TEXT NOT NULL DEFAULT 'zh'",
+                "owner_user_id": "TEXT REFERENCES users(id)",
+                "review_access_allowed": "INTEGER NOT NULL DEFAULT 0",
             }.items():
                 if column not in columns:
                     db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {definition}")
+            if "owner_user_id" not in {row["name"] for row in db.execute("PRAGMA table_info(memory_spaces)")}:
+                db.execute("ALTER TABLE memory_spaces ADD COLUMN owner_user_id TEXT REFERENCES users(id)")
             for character in SEEDS:
                 self._insert_character(db, character)
             db.execute("UPDATE sessions SET character_prompt=?,character_greeting=? WHERE character_prompt='' AND character_id='nova'",
@@ -71,7 +80,7 @@ class Store:
             # One-way additive migration: isolate each legacy session, preserve approved facts only.
             for row in db.execute("SELECT id FROM sessions WHERE memory_scope IS NULL").fetchall():
                 scope = str(uuid.uuid4())
-                db.execute("INSERT INTO memory_spaces VALUES(?)", (scope,))
+                db.execute("INSERT INTO memory_spaces(id) VALUES(?)", (scope,))
                 db.execute("UPDATE sessions SET memory_scope=? WHERE id=?", (scope, row["id"]))
             db.execute("""INSERT OR IGNORE INTO approved_memories
                 SELECT m.id,s.memory_scope,m.content,m.created,m.created,1
@@ -91,22 +100,23 @@ class Store:
         finally:
             db.close()
 
-    def create(self, mode: str, character_id="nova", memory_from_session_id=None, language="zh"):
+    def create(self, mode: str, character_id="nova", memory_from_session_id=None, language="zh", owner_user_id=None):
         character = self.character(character_id)
         if not character or not character["enabled"]:
             raise ValueError("Character is not available")
         sid = str(uuid.uuid4())
         with self.connect() as db:
             if memory_from_session_id:
-                source = db.execute("SELECT memory_scope FROM sessions WHERE id=?", (memory_from_session_id,)).fetchone()
-                if not source:
+                source = db.execute("""SELECT s.memory_scope,s.owner_user_id,p.owner_user_id AS space_owner
+                    FROM sessions s JOIN memory_spaces p ON p.id=s.memory_scope WHERE s.id=?""", (memory_from_session_id,)).fetchone()
+                if not source or source["owner_user_id"] != owner_user_id or source["space_owner"] != owner_user_id:
                     raise ValueError("Memory source session not found")
                 scope = source["memory_scope"]
             else:
                 scope = str(uuid.uuid4())
-                db.execute("INSERT INTO memory_spaces VALUES(?)", (scope,))
-            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting,memory_scope,language) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"], scope, language))
+                db.execute("INSERT INTO memory_spaces(id,owner_user_id) VALUES(?,?)", (scope, owner_user_id))
+            db.execute("INSERT INTO sessions(id,mode,created,character_id,character_revision,character_name,character_prompt,character_greeting,memory_scope,language,owner_user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                       (sid, mode, now(), character_id, character["revision"], character["name"], character["system_prompt"], character["greeting"], scope, language, owner_user_id))
         return self.session(sid)
 
     def session(self, sid):
@@ -118,6 +128,53 @@ class Store:
         with self.connect() as db:
             rows = db.execute("SELECT * FROM messages WHERE session_id=? ORDER BY id DESC LIMIT ?", (sid, limit)).fetchall()
             return [dict(r) for r in reversed(rows)]
+
+    def account_sessions(self, owner, cursor=None, limit=20):
+        params = [owner]
+        predicate = "owner_user_id=?"
+        if cursor:
+            created, separator, sid = cursor.partition("~")
+            if not separator or len(created) > 50 or len(sid) != 36 or len(cursor) > 90:
+                raise ValueError("Invalid session cursor")
+            predicate += " AND (created < ? OR (created=? AND id<?))"
+            params.extend([created, created, sid])
+        with self.connect() as db:
+            rows = db.execute(f"SELECT id,created FROM sessions WHERE {predicate} ORDER BY created DESC,id DESC LIMIT ?",
+                              (*params, limit + 1)).fetchall()
+        visible = rows[:limit]
+        summaries = {row["id"]: row for row in self.list_sessions([r["id"] for r in visible], limit)}
+        return {"items": [summaries[row["id"]] for row in visible], "limit": limit,
+                "next_cursor": visible[-1]["created"] + "~" + visible[-1]["id"] if len(rows) > limit and visible else None}
+
+    def session_count(self, owner=None):
+        with self.connect() as db:
+            return db.execute("SELECT COUNT(*) FROM sessions WHERE owner_user_id IS ?", (owner,)).fetchone()[0]
+
+    def review_access(self, sid, allowed):
+        with self.connect() as db:
+            db.execute("UPDATE sessions SET review_access_allowed=? WHERE id=?", (int(allowed), sid))
+            if not allowed:
+                # Notes may quote dialogue; withdrawal removes them from the reviewer plane.
+                db.execute("DELETE FROM reviews WHERE session_id=?", (sid,))
+
+    def audit_event(self, actor, action, target=None, **metadata):
+        allowed = {"provider", "run_id", "reason", "duration_ms", "total_tokens", "allowed", "count"}
+        if set(metadata) - allowed:
+            raise ValueError("Audit metadata must not include dialogue or credentials")
+        with self.connect() as db:
+            db.execute("INSERT INTO audit_events VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), actor, action, target,
+                       json.dumps(metadata, ensure_ascii=False), now()))
+
+    def audit_events(self, limit=100):
+        with self.connect() as db:
+            return [{**dict(row), "metadata": json.loads(row["metadata"])} for row in db.execute(
+                "SELECT * FROM audit_events ORDER BY created DESC LIMIT ?", (limit,))]
+
+    def prune_audit(self, retention_days):
+        from datetime import timedelta
+        threshold = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        with self.connect() as db:
+            return db.execute("DELETE FROM audit_events WHERE created < ?", (threshold,)).rowcount
 
     def memories(self, sid, status=None):
         self._expire_proposals()
@@ -190,10 +247,28 @@ class Store:
             cur = db.execute("DELETE FROM approved_memories WHERE id=? AND space_id=(SELECT memory_scope FROM sessions WHERE id=?)", (mid, sid))
             return cur.rowcount > 0
 
-    def memory_correct(self, sid, mid, content):
+    def memory_correct(self, sid, mid, content, *, approve_pending=False):
         content = content.strip()
         if not 1 <= len(content) <= 300:
             return False
+        with self._pending_lock:
+            self._expire_proposals()
+            pending = self._pending.get(mid)
+            if pending:
+                if not approve_pending or pending["session_id"] != sid:
+                    return False
+                session = self.session(sid)
+                if not session:
+                    return False
+                with self.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    if db.execute("SELECT COUNT(*) FROM approved_memories WHERE space_id=?", (session["memory_scope"],)).fetchone()[0] >= 100:
+                        raise ValueError("Memory limit reached; remove older memories first.")
+                    stamp = now()
+                    db.execute("INSERT INTO approved_memories VALUES(?,?,?,?,?,1)",
+                               (mid, session["memory_scope"], content, stamp, stamp))
+                self._pending.pop(mid, None)
+                return True
         with self.connect() as db:
             cur = db.execute("UPDATE approved_memories SET content=?,updated=?,revision=revision+1 WHERE id=? AND space_id=(SELECT memory_scope FROM sessions WHERE id=?)",
                              (content, now(), mid, sid))
@@ -294,7 +369,7 @@ class Store:
     def list_sessions(self, ids=None, limit=100):
         if ids is not None and not ids:
             return []
-        sql = """SELECT s.id,s.character_id,s.character_name,s.character_revision,s.mode,s.created,
+        sql = """SELECT s.id,s.character_id,s.character_name,s.character_revision,s.mode,s.created,s.review_access_allowed,
           (SELECT COUNT(*) FROM turns t WHERE t.session_id=s.id) AS turn_count,
           (SELECT COUNT(*) FROM approved_memories m WHERE m.space_id=s.memory_scope) AS memory_count,
           COALESCE((SELECT MAX(t.created) FROM turns t WHERE t.session_id=s.id),s.created) AS last_active FROM sessions s"""
@@ -351,6 +426,9 @@ class Store:
                        data["empathy_score"], data["memory_score"], data["note"], provider, now()))
         return next(row for row in self.reviews() if row["id"] == rid)
 
-    def reviews(self):
+    def reviews(self, permitted_only=False):
         with self.connect() as db:
-            return [dict(row) for row in db.execute("SELECT * FROM reviews ORDER BY created DESC LIMIT 100")]
+            sql = "SELECT r.* FROM reviews r"
+            if permitted_only:
+                sql += " JOIN sessions s ON s.id=r.session_id WHERE s.owner_user_id IS NOT NULL AND s.review_access_allowed=1"
+            return [dict(row) for row in db.execute(sql + " ORDER BY r.created DESC LIMIT 100")]

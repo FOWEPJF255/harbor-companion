@@ -109,9 +109,11 @@ No fixture requests or examines hidden chain of thought. The captured evidence c
 
 This is an executed, bounded DataAgent demonstration rather than a static dashboard. The planner is deterministic and the dataset is synthetic. It does not demonstrate an LLM generating unrestricted SQL, access to private business data, real emotion recognition, or measured production outcomes.
 
-## Real-model quality: still pending
+## Initial actual model run; human quality scoring pending
 
-`eval/quality-scenarios.json` contains eight scenario outlines for a later real-model run. Once the user supplies the provider configuration, preserve synthetic multi-turn transcripts and record:
+On 2026-10-09, `scripts/evaluate_live.py --run` completed eight authored execution scenarios against official DeepSeek: ten model requests, zero execution failures, and 9,544 provider-reported total tokens. Inputs and results are [recorded here](evidence/live-deepseek-2026-10-09.json). The inputs covered Chinese/English identity, recent context, explicit memory proposal/approval and linked recall, emotional listening, and identity/dependency refusal. This is initial execution evidence, not a semantic pass rate.
+
+`eval/quality-scenarios.json` remains a set of deeper quality outlines. Its full multi-turn/empathy/romance/correction review was not completed by the initial runner. Preserve versioned transcripts and record:
 
 | Dimension | Review question | Evidence |
 |---|---|---|

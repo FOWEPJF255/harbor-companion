@@ -22,6 +22,13 @@ class Settings:
     allowed_hosts: tuple[str, ...] = ()
     client_token: str = ""
     admin_token_minutes: int = 60
+    auth_mode: str = "local_demo"
+    registration_enabled: bool = False
+    user_token_minutes: int = 60
+    chat_requests_per_minute: int = 20
+    max_concurrent_runs: int = 4
+    run_queue_timeout: float = 2
+    audit_retention_days: int = 30
 
     @classmethod
     def from_env(cls):
@@ -38,4 +45,11 @@ class Settings:
             allowed_hosts=tuple(x.strip().lower() for x in os.getenv("HARBOR_ALLOWED_HOSTS", "").split(",") if x.strip()),
             client_token=os.getenv("HARBOR_CLIENT_TOKEN", ""),
             admin_token_minutes=max(5, min(120, int(os.getenv("HARBOR_ADMIN_TOKEN_MINUTES", "60")))),
+            auth_mode=os.getenv("HARBOR_AUTH_MODE", "local_demo"),
+            registration_enabled=os.getenv("HARBOR_REGISTRATION_ENABLED", "false").lower() == "true",
+            user_token_minutes=max(5, min(1440, int(os.getenv("HARBOR_USER_TOKEN_MINUTES", "60")))),
+            chat_requests_per_minute=max(1, min(120, int(os.getenv("HARBOR_CHAT_REQUESTS_PER_MINUTE", "20")))),
+            max_concurrent_runs=max(1, min(16, int(os.getenv("HARBOR_MAX_CONCURRENT_RUNS", "4")))),
+            run_queue_timeout=max(0.01, min(10, float(os.getenv("HARBOR_RUN_QUEUE_TIMEOUT_SECONDS", "2")))),
+            audit_retention_days=max(1, min(90, int(os.getenv("HARBOR_AUDIT_RETENTION_DAYS", "30")))),
         )

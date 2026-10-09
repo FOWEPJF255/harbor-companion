@@ -4,7 +4,9 @@ This is a plan, not a promise to a recruiter or evidence of completed work. API 
 
 ## Current checkpoint: 2026-10-09
 
-The v0.3 offline checkpoint adds explicit cross-conversation memory consent/correction, bilingual UI, a bounded synthetic DataAgent and 50 reproducible application scenarios. Local checks are recorded in [evidence](evidence.md); semantic quality and physical-phone operation are pending. Continue from [CURRENT](CURRENT.md) rather than rebuilding milestone 0.
+The v0.4 checkpoint adds user accounts, object ownership, explicit reviewer permission, request/concurrency budgets, private redacted audit and initial real DeepSeek execution evidence. The v0.3 consent/bilingual/DataAgent foundation is preserved. Local checks and actual model runs are recorded in [evidence](evidence.md); human semantic-quality scoring and physical-phone operation remain pending. Continue from [CURRENT](CURRENT.md) rather than rebuilding milestone 0.
+
+The owner's new enterprise-engineering direction is tracked in [production readiness](enterprise-readiness.md), derived from [official market sources](market-requirements-2026-10-09.md). Finish owner data lifecycle and quality feedback next. Organization tenancy, distributed infrastructure and a production launch are not completed by the account foundation.
 
 Existing voice, dynamic-avatar and outreach deferrals remain in force. Streaming is optional only after an observed UX need, not a required new feature.
 

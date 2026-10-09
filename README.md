@@ -2,7 +2,7 @@
 
 An inspectable character companion prototype: persona, multi-turn context, consent-based memory, bounded tool use, and evidence you can replay.
 
-**Stage: offline app and management prototype, v0.3.** The default mock provider uses deterministic replies to exercise infrastructure. Real conversational empathy, context quality, and relationship consistency are **not evaluated yet**. A server-side OpenAI-compatible adapter is ready for later credentials; no live API call has been made during development. See [current progress](docs/CURRENT.md) for the next bounded milestone and acceptance gaps.
+**Stage: controlled APP and account foundation, v0.4.** Official DeepSeek integration has been exercised with eight synthetic scenarios and ten real model requests. Human companionship-quality scoring, public deployment and physical-device acceptance remain pending. Default template configuration still uses deterministic mock replies for infrastructure checks. See [current progress](docs/CURRENT.md), [market requirements](docs/market-requirements-2026-10-09.md), and [production readiness](docs/enterprise-readiness.md) for implemented controls and remaining gates.
 
 ## Product
 
@@ -20,10 +20,12 @@ The current prototype implements:
 - Session aggregates plus a natural-language DataAgent executing four allowlisted analyses on labeled synthetic data.
 - Observable tool traces, synthetic regression fixtures, and a real-model quality rubric.
 - Mobile app navigation, keyboard/safe-area handling, and per-device session entry management.
-- A login-protected management console for characters, versioned prompts, private session inspection, and human quality annotations.
+- Separate user/administrator authentication, owner-bound sessions and memory spaces, logout/expiry/revocation, and default-disabled registration.
+- A management console for characters and reviews; account conversations require explicit user permission before reviewer inspection.
+- Per-actor request budgets, bounded concurrency/session admission, private redacted audit and database readiness checks.
 - Character snapshots: edited prompts apply to new conversations without silently changing existing ones.
 - Public-assets-only PWA support and an Android packaging workflow; no offline chat simulation or API cache.
-- Chinese/English user-interface foundation and language-aware mock/policy responses. Administration and original character descriptions remain in Chinese.
+- Chinese/English user and administration interfaces and language-aware responses. Authored character descriptions and transcripts retain their original language.
 
 ## Start on Windows
 
@@ -67,11 +69,13 @@ HARBOR_API_KEY=YOUR_LOCAL_KEY
 HARBOR_MODEL=YOUR_TOOL_CALLING_MODEL
 ```
 
-Restart the backend. The model must support Chat Completions function tools, `tool_calls`, and tool observations. The adapter currently sends `max_completion_tokens`; verify compatibility with the selected provider. A model error returns an error, not a disguised mock reply. Credentials never pass through the browser.
+Restart the backend. The model must support Chat Completions function tools, `tool_calls`, and tool observations. The official DeepSeek host uses its documented `max_tokens` and non-thinking parameters; other compatible providers use `max_completion_tokens`. Verify protocol compatibility before changing vendors. A model error returns an error, not a disguised mock reply. Credentials never pass through the browser.
 
 With a real provider, recent messages, approved memories, and relevant tool results leave this machine for that configured service. Local storage is **not** a promise of local model inference.
 
 See [provider integration](docs/provider-integration.md) and [evaluation](docs/evaluation.md) before claiming model quality.
+
+For the account profile, use [accounts](docs/accounts.md); remote hosts require `HARBOR_AUTH_MODE=accounts`. Self-registration remains disabled and the owner chooses every provisioned password. [Production readiness](docs/enterprise-readiness.md) explains the remaining data-lifecycle, ingress, load and device checks before public operation.
 
 ## Verify
 

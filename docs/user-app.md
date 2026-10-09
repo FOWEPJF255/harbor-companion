@@ -17,7 +17,7 @@ Boundaries:
 - Character names, introductions, and stored greeting snapshots stay in their original language. The English view states this explicitly.
 - Existing messages and memory contents are not automatically translated.
 - Tool names, status codes, fixture fields, and observable JSON stay faithful to the backend records.
-- The management console remains Chinese in this iteration and its entry says so.
+- The management console has a separate bilingual interface that follows the same selected language. Its login and data remain separate from ordinary user accounts.
 - English browser installation currently uses browser-menu instructions. The existing dedicated install-prompt component remains available in the Chinese view. Native apps do not show browser installation instructions.
 - Real-model response language and semantic quality still require provider integration and separate evaluation. A translated interface is not evidence of international deployment or growth.
 
@@ -60,10 +60,34 @@ The page explicitly states that these are public synthetic fixtures, processed b
 
 ## Backend connections
 
-Browser session links use `getSessionKey` so different backend URLs have different link registries. Changing a backend does not transmit the previous backend's session handles to the new target. Known links do not sync between devices automatically.
+Both backend connection and identity determine local session state. Capability-mode browser links use `getSessionKey`; account-mode active links additionally use the verified user ID via `getUserSessionKey`. Changing a backend does not transmit the previous backend's session handles to the new target. Anonymous links do not sync between devices automatically.
 
 The app can reach My space even when a native app has no backend address yet. Native deployment needs a reachable HTTPS backend and the operator's demo access code where required. Model API keys remain on the server.
 
+## Ordinary user accounts
+
+`GET /api/status` declares either `local_demo` or `accounts` plus `registration_enabled`. The UI cannot infer account readiness from model configuration. The local demo retains the original anonymous capability workflow and states that it is not a deployed multi-user service. A remotely exposed backend must use accounts mode.
+
+In accounts mode, My space provides ordinary-user login and, only when enabled by the server, self-registration. Self-registration is disabled by default; the operator provisions accounts through the separate management or CLI process. Usernames are 3–40 ASCII letters, digits, underscores, dots, or hyphens and are normalized by the server. Passwords are 12–128 characters. The UI asks for adult confirmation before login; registration and new-session requests additionally carry explicit server-side confirmation.
+
+The login body contains only `username` and `password`. Registration sends those fields and `adult_confirmed: true`. Responses contain the public user identity, an opaque access token, and expiry; the browser does not request password hashes. Password inputs are never written to application storage and are cleared after attempts. Browser password-manager behavior is controlled by the browser.
+
+An ordinary-user access token is kept in `sessionStorage`, scoped to the backend URL. Restoration calls `/api/auth/me` before loading private sessions. It is passed explicitly through `userApi` and never silently applied to `/api/admin/*`; administrator login and operator access codes are independent. The UI's backend connection input is not a place for model credentials.
+
+Account-mode session lists come from the authenticated server rather than the anonymous device registry. They show 20 items per page and offer an explicit Load more control when `next_cursor` is returned. The last-used session is stored separately per backend and verified user. Existing anonymous sessions are not automatically claimed.
+
+Sign-out clears local identity, chat, session lists, observable traces, retries, memory drafts, and analysis input immediately, then requests server token revocation. Failure to confirm server revocation is shown explicitly. Backend changes, expiry, and sign-out abort user requests and increment an identity epoch. Responses from an earlier identity cannot write a later user's state or session cache. Returning to a previously configured backend still verifies its stored token before restoration.
+
+## Permission for human review
+
+My space → Privacy and usage boundaries includes an unchecked-by-default consent control for the current session. Only an explicit action sends `POST /api/sessions/{sid}/review-access` with `allowed: true`. The explanatory copy names the messages, memories, and review material that an administrator may inspect for human quality assessment. Withdrawal sends `allowed: false`.
+
+The backend owns permission and account-ownership enforcement; the browser checkbox is not an authorization boundary. In account mode, revoked or absent permission prevents administrator access to raw session/review material. Sharing approved memory is a different consent action and does not grant administrator review access.
+
 ## Verification scope
 
-`npm run build` completed on this iteration: TypeScript validation and the Vite production bundle succeeded. This is a build result, not physical-device operation or semantic conversation evaluation. Browser/phone acceptance should still walk both languages through creation, explicit memory sharing, correction, deletion, safe analysis, and failed-request recovery.
+`npm run build` completed on this iteration: TypeScript validation and the Vite production bundle succeeded. This is a build result, not physical-device operation or semantic conversation evaluation.
+
+The isolated loopback service at `http://127.0.0.1:8766` used mock mode, two provisioned synthetic users, disabled registration, and disposable synthetic data. Ten HTTP assertion groups passed: public account-mode disclosure, no-token denial, disabled registration, both users' login and `me`, default-isolated versus explicit shared memory, cross-owner read/share/permission denial, grant/withdraw review permission, an English mock turn, 20-item pagination, and revoked-token denial after logout. The record is `reports/user-accounts-http-2026-10-09.json`; it contains no passwords or tokens. These requests verify the live API contract, not React interactions.
+
+Browser automation was attempted with CUA, but all browser extension surfaces returned `nodeRepl.fetch request failed` and the in-app browser was unavailable. No 390-pixel screenshot or interactive browser acceptance is claimed in that report. Browser/phone acceptance still needs both languages through login, account switching, creation, explicit memory sharing, correction, deletion, analysis, request failure, and logout. In particular, cancellation of late UI responses and the absence of cross-user drafts require a browser-level walkthrough in addition to the identity guards implemented in code.

@@ -1,4 +1,6 @@
-export type AdminView = 'overview' | 'characters' | 'sessions' | 'reviews' | 'provider'
+export type AdminView = 'overview' | 'characters' | 'sessions' | 'reviews' | 'provider' | 'operations'
+
+export type AdminAuthMode = 'local_demo' | 'accounts'
 
 export interface CharacterInput {
   name: string
@@ -27,6 +29,8 @@ export interface Overview {
   provider_counts: Record<string, number>
   average_latency_ms: number | null
   reviews_count: number
+  scope?: string
+  quality_evidence?: string
 }
 
 export interface SessionSummary {
@@ -38,6 +42,27 @@ export interface SessionSummary {
   turn_count: number
   memory_count: number
   last_active: string | null
+  review_access_allowed?: number | boolean
+}
+
+export interface Operations {
+  budgets: {
+    active_runs?: number
+    max_concurrent_runs?: number
+    requests_per_actor_per_minute?: number
+    rejected_since_start?: number
+    scope?: string
+  }
+  audit: Array<{
+    id: string
+    actor_id: string | null
+    action: string
+    target_id: string | null
+    metadata: Record<string, unknown>
+    created: string
+  }>
+  audit_retention_days: number
+  scope: string
 }
 
 export interface SessionDetail {

@@ -2,18 +2,35 @@
 
 Updated: 2026-10-09, Asia/Shanghai. Source baseline: the owner's `APP需求与验收基线.md` dated 2026-10-09. This file is the continuation entry point; read AGENTS, this file, roadmap, and evidence before the next iteration.
 
+The latest user direction expands the MVP into market-informed operational engineering. Continue from [production readiness](enterprise-readiness.md) and the [market requirement register](market-requirements-2026-10-09.md), preserving the original adult companion/APP scope. The prior [bilingual management follow-up](iteration-2026-10-09-bilingual.md) is retained.
+
 ## Current milestone
 
-**v0.3 offline engineering milestone. The complete companion MVP still needs real-model and device evidence.** No live model call, public hosting, HR message, store release, or commercial/user-count result is claimed.
+**v0.4 account/operations foundation and initial actual DeepSeek execution evidence.** The owner identified the API as official DeepSeek; its documented base URL and `deepseek-flash` are now configured locally. Eight authored synthetic scenarios made ten real requests, with no execution failures and 9,544 provider-reported total tokens. Human scores remain pending. There is no public deployment, HR message, physical-phone acceptance, store release, commercial result or customer-count claim.
+
+### New implemented increment
+
+- Optional user accounts, hashed opaque tokens, password hashing, expiry/revocation, default-disabled registration; user and administrator credentials are separate.
+- Owner checks across sessions, messages, proposals, approved-memory sharing and deletion. Legacy anonymous records are not automatically assigned to users. Remote hosts require accounts mode.
+- Server-owned session pagination and user-session restoration. The client clears private state/cancels requests on logout, user expiry or backend change.
+- Explicit reviewer permission per owned session, default denied; withdrawal removes review notes and blocks further raw-data inspection.
+- Request and concurrency admission, bounded session waits, redacted action audit with startup retention cleanup, readiness endpoint and authenticated operations API.
+- DeepSeek-specific request parameters, failure metadata and an opt-in bounded synthetic live evaluator. Hidden reasoning and keys are not exposed.
+
+Final full regression: **266 passed**, one existing Starlette/httpx deprecation warning, 37.33 seconds. Independent synthetic application evaluator: **50/50**, zero model calls. These are separate from the ten real calls. The full rebuild/check and repair history are recorded in [evidence](evidence.md) and the [v0.4 iteration](iteration-2026-10-09-v0.4.md).
+
+User-account frontend compilation and ten grouped synthetic HTTP integration checks passed. Browser automation was unavailable after recovery attempts; current account UI interactions and the new 390px layout have not been visually accepted. Prior v0.3/bilingual walkthroughs are historical evidence only.
+
+### Earlier v0.3 baseline
 
 | Acceptance area | Implemented evidence | Actual check | Remaining boundary |
 | --- | --- | --- | --- |
 | Adult disclosed AI characters | Seed personas, management revisions, per-session snapshots | Synthetic identity, snapshot, archive, adult-policy tests | Real-model persona and romance quality pending |
 | Multi-turn context | Bounded recent history in provider request | Synthetic capture/provider assertions | Long-conversation continuity and genuine empathy pending |
 | Memory consent | Process-only pending suggestions; explicit approved save | Disk/restart/expiry and approval tests | Ordinary dialogue can still contain the same fact |
-| Cross-conversation recall | Explicit source-session selection; default isolated memory spaces | Shared recall, default isolation, restart and source-deletion tests; browser walkthrough | Demo capability handles, not account/phone sync |
+| Cross-conversation recall | Explicit source-session selection; default isolated memory spaces | Shared recall, default isolation, restart and source-deletion tests; browser walkthrough | v0.3 used demo handles; v0.4 adds account ownership and server session listing |
 | Correct/delete memory | User correction with revision; shared deletion; orphan-space cleanup | API/storage scenarios and corrected recall in browser | Historical messages/traces are not rewritten |
-| Chinese/English and mobile | Language selector, language-aware mock/policy, responsive navigation | Production build and 390 × 844 browser preview | Character originals/admin not translated; native phone review pending |
+| Chinese/English and mobile | Shared language preference, bilingual user/studio UI, language-aware mock/policy, responsive navigation | Production build; prior mobile preview; studio login/draft/error switching walkthrough | Authored character/transcript content stays original; native phone review pending |
 | Bounded ReAct-style execution | Allowlist, validation, run/step/tool timeouts, tool errors, content-checked retries | Injected provider/tool errors, timeout, late-result, denied-action, collision checks | No hidden reasoning displayed; Python workers are not forcibly killed |
 | DataAgent | Natural-language selection of four safe plans; actual fixed-fixture aggregation | Independent arithmetic, rejection, provenance and API/tool scenarios; mobile query walkthrough | Deterministic planner, synthetic samples only; no private-data/LLM-quality claims |
 | Reproducible evidence | 50 bilingual application-contract cases with detailed output/mode/time/errors | 50/50 fixtures; 140 Python tests; frontend build | These counts are engineering checks, not semantic scores |
@@ -23,8 +40,8 @@ Recorded commands/results and source links: [evidence](evidence.md), [evaluation
 
 ## Next highest priorities
 
-1. When the owner supplies server-side API configuration, run the existing real-quality outlines using synthetic dialogue; retain actual provider/model/date, usage when returned, failed examples and human 1–5 reviews. Never fall back to mock.
-2. Review the current Android build on a physical phone using a deliberately configured HTTPS demo backend. Validate keyboard, rotation, safe areas, reconnect and access-code behavior. No deployment is authorized by this file.
-3. Prepare the final walkthrough/evidence packet from those observed results; repair measured defects and rerun the same checks. Do not expand into voice, dynamic avatars, engagement notifications or unrelated features.
+1. Complete the remaining P0 owner data lifecycle: complete scoped export/account deletion, retention policies and a disposable backup/restore drill. Add response feedback with authorized turn references, triage and regression linkage as the next bounded product loop.
+2. Human-review the actual DeepSeek transcripts and expand the existing quality outlines, including gentle-romance consistency, memory conflict and adversarial cases. Fix a measured weakness and rerun the versioned samples; do not convert execution completion into a quality score.
+3. Recover UI verification and review the current Android build on a physical phone using a deliberately configured HTTPS account backend. Validate keyboard, rotation, safe areas, reconnect, access code and account switching. No deployment is authorized by this file.
 
-While API/device inputs are absent, continue only planned reproducibility, packaging, documentation or concrete regression repairs. Do not reopen completed scaffolding or invent semantic metrics. The agreed 1–2 week direction is a goal, not a promised completion date or hiring outcome.
+The API input is now available; physical-device and human-quality evidence remain open. Follow the bounded readiness plan instead of rebuilding scaffolding or expanding into voice, dynamic avatars or autonomous outreach. The agreed 1–2 week direction is a goal, not a promised completion date or hiring outcome.

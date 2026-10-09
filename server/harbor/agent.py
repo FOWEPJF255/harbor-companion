@@ -28,8 +28,8 @@ TOOLS = [
 
 
 class AgentFailure(ProviderError):
-    def __init__(self, reason, trace, provider, latency_ms):
-        super().__init__(reason)
+    def __init__(self, reason, trace, provider, latency_ms, metadata=None):
+        super().__init__(reason, metadata)
         self.reason, self.trace, self.provider, self.latency_ms = reason, trace, provider, latency_ms
 
 
@@ -76,7 +76,8 @@ class Agent:
         except (ProviderError, TimeoutError) as exc:
             reason = "run_timeout" if isinstance(exc, TimeoutError) else "provider_or_step_failure"
             trace.append({"type": "failure", "name": reason, "status": "failed"})
-            raise AgentFailure(reason, trace, self.provider.name, round((time.perf_counter() - started) * 1000, 1)) from None
+            raise AgentFailure(reason, trace, self.provider.name, round((time.perf_counter() - started) * 1000, 1),
+                               getattr(exc, "metadata", {})) from None
 
     async def _run(self, sid, text, language, trace):
         started = time.perf_counter()
@@ -111,7 +112,8 @@ class Agent:
                         value = result.usage.get(key, 0)
                         usage[key] += value if isinstance(value, int) else 0
                     trace.append({"type": "model", "name": provider_name, "step": step + 1,
-                                  "status": "tool_calls" if result.calls else "reply"})
+                                  "status": "tool_calls" if result.calls else "reply",
+                                  "finish_reason": result.metadata.get("finish_reason", "not reported")})
                     if not result.calls:
                         reply = result.content.strip()
                         if not reply or len(reply) > 4000:

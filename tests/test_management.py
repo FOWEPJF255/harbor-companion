@@ -35,7 +35,8 @@ def test_admin_logout_and_restart_revoke_token(owner):
 
 def test_remote_configuration_cannot_bootstrap(tmp_path):
     access = "synthetic-demo-access-code-32-characters"
-    settings = Settings(db_path=str(tmp_path / "remote.sqlite3"), allowed_hosts=("demo.example",), client_token=access)
+    settings = Settings(db_path=str(tmp_path / "remote.sqlite3"), allowed_hosts=("demo.example",), client_token=access,
+                        auth_mode="accounts")
     with TestClient(create_app(settings)) as client:
         assert not client.get("/api/admin/setup-status").json()["can_initialize"]
         assert client.post("/api/admin/bootstrap", headers={"X-Harbor-Access": access}, json=FIXTURE_LOGIN).status_code == 403

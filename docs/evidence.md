@@ -56,3 +56,17 @@ The DataAgent fixture's hand-authored success/failure and latency values are sep
 Code snapshot: `398bfb0`. [GitHub framework checks](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843051697) completed successfully for that commit (backend tests/evaluator and frontend build). This is separate from Android compilation and real-model/device evidence.
 
 Android v0.3: [cloud build 37843054056](https://github.com/FOWEPJF255/harbor-companion/actions/runs/37843054056) completed successfully for `398bfb0`. Downloaded `data/releases/Harbor-0.3.0-debug.apk` is 4,307,956 bytes; SHA-256 matches the build checksum. See [packaging record](app-delivery.md) for the hash and limits. This does not verify installation or a physical phone.
+
+## Account/operations and actual-provider iteration, v0.4
+
+Date: 2026-10-09, Asia/Shanghai. See the [complete iteration and failure/repair record](iteration-2026-10-09-v0.4.md).
+
+- Final Python regression: **266 passed**, one existing dependency deprecation warning, **37.33 s**. Synthetic credentials/providers and disposable storage only.
+- Independent application evaluator: **50/50**, **zero model calls**, [full recorded report](evidence/framework-v0.4-2026-10-09.json).
+- TypeScript/Vite production build succeeded for the user-account UI, preserved bilingual administration and operations view.
+- Ten grouped account HTTP checks and an operations/reviewer permission chain completed on isolated mock storage. No real account password was chosen; no private dialogue was used.
+- Official DeepSeek execution: **eight authored synthetic scenarios, ten model requests, zero execution failures**, [actual inputs, outputs, tool traces, durations and usage](evidence/live-deepseek-2026-10-09.json). Provider-reported tokens: **9,544 total**. Human quality scores remain pending.
+- Browser automation was unavailable after recovery; no current account UI screenshot/interaction pass is claimed. The prior browser evidence belongs to its recorded earlier revision.
+- Private SQLite migration snapshot and server-side credentials remain outside Git. The local backend now reports `openai_compatible`, `deepseek-flash`, configured=true; health checks database readiness without probing/billing a provider.
+
+This release is an account/operations engineering foundation. Complete export/account deletion, retention/recovery, production ingress/load, human semantic quality and physical-phone acceptance remain open. No commercial/user-count or production-grade claim follows from these checks.

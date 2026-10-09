@@ -1,17 +1,19 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { api, ApiError, clearConnection, getConnection, getSessionKey, setConnection } from './api'
+import { api, ApiError, clearConnection, getConnection, localizeApiMessage, setConnection } from './api'
 import { AppInstall, isNativeApp, registerAppShell } from './AppInstall'
 import { analysisQuestions, readLanguage, starters, storeLanguage, translator, type Language, type TextKey } from './i18n'
+import { AuthPanel } from './AuthPanel'
+import { configureUserMode, expireUser, getUserAuth, getUserSessionKey, identityContext, identityIsCurrent, resetUserIdentity, signOutUser, StaleIdentityError, subscribeUserAuth, userApi, type AuthMode } from './user-auth'
 import './style.css'
 
 type Memory = {id: string; content: string; status: 'pending' | 'approved'}
 type Message = {role: 'user' | 'assistant'; content: string; emotion: string}
 type Insight = {turn_count: number; median_latency_ms: number | null; emotion_counts: Record<string, number>}
-type Session = {id: string; mode: string; character_id: string; character_name: string; character_revision: number; character_greeting: string; messages: Message[]; memories: Memory[]; insights: Insight}
+type Session = {id: string; mode: string; character_id: string; character_name: string; character_revision: number; character_greeting: string; messages: Message[]; memories: Memory[]; insights: Insight; review_access_allowed?: boolean}
 type SessionSummary = {id: string; character_name: string; mode: string; created: string; turn_count: number; last_active: string}
 type Character = {id: string; name: string; tagline: string; description: string; greeting: string; accent_color: string; avatar_style: string; revision: number}
-type Status = {provider: string; configured: boolean; model: string | null}
+type Status = {provider: string; configured: boolean; model: string | null; auth_mode: AuthMode; registration_enabled: boolean}
 type Trace = {type?: string; name?: string; status?: string; step?: number; input?: unknown; observation?: unknown; [key: string]: unknown}
 type Run = {reply: string; provider: string; trace: Trace[]; latency_ms: number; emotion: string}
 type Analysis = {answer: string; plan: unknown; result: unknown; trace: Trace[]; source: unknown; scope: unknown}
@@ -22,9 +24,9 @@ const tabItems: {id: Tab; icon: string; label: TextKey}[] = [{id: 'characters', 
 
 function readKnownSessions(): string[] {
   try {
-    const stored: unknown = JSON.parse(localStorage.getItem(getSessionKey('harbor-sessions')) || '[]')
+    const stored: unknown = JSON.parse(localStorage.getItem(getUserSessionKey('harbor-sessions')) || '[]')
     const ids = Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string' && /^[a-f0-9-]{36}$/i.test(id)) : []
-    const active = localStorage.getItem(getSessionKey('harbor-session'))
+    const active = localStorage.getItem(getUserSessionKey('harbor-session'))
     if (active && /^[a-f0-9-]{36}$/i.test(active)) ids.unshift(active)
     return [...new Set(ids)].slice(0, 20)
   } catch {return []}
@@ -32,7 +34,7 @@ function readKnownSessions(): string[] {
 
 function persistKnownSessions(ids: string[]) {
   const bounded = [...new Set(ids)].slice(0, 20)
-  localStorage.setItem(getSessionKey('harbor-sessions'), JSON.stringify(bounded))
+  localStorage.setItem(getUserSessionKey('harbor-sessions'), JSON.stringify(bounded))
   return bounded
 }
 
@@ -82,6 +84,9 @@ export function App() {
   const modeNames: Record<string, string> = {friend: t('friend'), gentle_romance: t('romance')}
   const moodNames: Record<string, string> = language === 'en' ? {calm: 'Calm', bright: 'Bright', low: 'Low', overwhelmed: 'Stress'} : {calm: '平静', bright: '轻快', low: '低落', overwhelmed: '压力'}
   const [status, setStatus] = useState<Status | null>(null)
+  const [userAuth, setUserAuth] = useState(getUserAuth)
+  const userAuthRef = useRef(getUserAuth())
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [characters, setCharacters] = useState<Character[]>([])
   const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selectedCharacterId, setSelectedCharacterId] = useState('nova')
@@ -112,45 +117,100 @@ export function App() {
   const [connection, setConnectionDraft] = useState(getConnection)
   const [connectionNotice, setConnectionNotice] = useState('')
   const retry = useRef<{sid: string; text: string; id: string; language: Language} | null>(null)
-  const knownIds = useRef<string[]>(readKnownSessions())
+  const knownIds = useRef<string[]>([])
   const messagesEnd = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
   const connectionEpoch = useRef(0)
   const listRequest = useRef(0)
+  const sessionSelection = useRef(0)
 
-  useEffect(() => {storeLanguage(language)}, [language])
+  useEffect(() => {
+    storeLanguage(language)
+    document.title = language === 'en' ? 'Harbor · AI companion' : '港湾 · AI 陪伴'
+  }, [language])
   useEffect(() => {
     const sync = () => setOnline(navigator.onLine)
     window.addEventListener('online', sync); window.addEventListener('offline', sync)
     return () => {window.removeEventListener('online', sync); window.removeEventListener('offline', sync)}
   }, [])
 
-  async function refreshSessions(ids = knownIds.current) {
-    const epoch = connectionEpoch.current
+  function resetPrivateState() {
+    sessionSelection.current += 1
+    setSession(null); setSessions([]); setNextCursor(null); knownIds.current = []; listRequest.current += 1
+    setLastRun(null); setFailedTrace([]); retry.current = null; setDraft(''); setPendingText('')
+    setMemoryDraft(''); setEditingMemory(null); setCorrection(''); setReuseMemories(false)
+    setQuestion(''); setAnalysis(null); setAnalysisFailure([]); setError(''); setConnectionNotice('')
+    setBusy(false); setSending(false); setAnalyzing(false); setAdult(false); setRestoring(false); composing.current = false
+  }
+
+  useEffect(() => subscribeUserAuth(next => {
+    const previous = userAuthRef.current
+    userAuthRef.current = next
+    if (previous.epoch !== next.epoch || previous.backendKey !== next.backendKey) {
+      resetPrivateState(); setTab(next.phase === 'demo' ? 'characters' : 'me')
+      if (next.phase !== 'demo') setDesktopDetail('me')
+    }
+    setUserAuth(next)
+  }), [])
+
+  useEffect(() => {
+    if (userAuth.phase !== 'authenticated' || !userAuth.expiresAt) return
+    const context = identityContext()
+    const timer = window.setTimeout(() => {
+      if (identityIsCurrent(context)) {expireUser(); setConnectionNotice(translator(readLanguage())('accountExpired'))}
+    }, Math.max(0, userAuth.expiresAt - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [userAuth.epoch, userAuth.phase, userAuth.expiresAt])
+
+  async function refreshSessions(ids = knownIds.current, cursor?: string) {
+    const context = identityContext()
+    const account = getUserAuth().mode === 'accounts'
     const request = ++listRequest.current
-    if (!ids.length) {setSessions([]); return}
-    const response = await api<{items: SessionSummary[]}>(`/sessions?ids=${encodeURIComponent(ids.join(','))}`)
-    if (epoch !== connectionEpoch.current || request !== listRequest.current) return
-    setSessions(response.items)
-    knownIds.current = persistKnownSessions(response.items.map(item => item.id))
+    if (!account && !ids.length) {setSessions([]); setNextCursor(null); return}
+    const path = account ? `/sessions${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}` : `/sessions?ids=${encodeURIComponent(ids.join(','))}`
+    const response = await userApi<{items: SessionSummary[]; next_cursor?: string | null}>(path)
+    if (!identityIsCurrent(context) || request !== listRequest.current) return
+    setSessions(previous => cursor ? [...previous, ...response.items.filter(item => !previous.some(old => old.id === item.id))] : response.items)
+    setNextCursor(account ? response.next_cursor || null : null)
+    if (!account) knownIds.current = persistKnownSessions(response.items.map(item => item.id))
   }
 
   useEffect(() => {
     let cancelled = false
     const epoch = connectionEpoch.current
     const current = () => !cancelled && epoch === connectionEpoch.current
-    api<Status>('/status').then(value => {if (current()) setStatus(value)}).catch(e => {if (current()) setError((e as Error).message)})
-    api<{items: Character[]}>('/characters').then(value => {if (current()) {setCharacters(value.items); setCatalogState('ready')}}).catch(e => {if (current()) {setCatalogState('error'); setError((e as Error).message)}})
-    const sid = localStorage.getItem(getSessionKey('harbor-session'))
-    const restore = sid ? api<Session>(`/sessions/${sid}`).then(value => {
-      if (current()) {setSession(value); setSelectedCharacterId(value.character_id || 'nova'); setMode(value.mode); setTab('chat')}
-    }).catch(e => {if (current()) setError(translator(readLanguage())('restoreError', {error: (e as Error).message}))}) : Promise.resolve()
-    restore.finally(() => {if (current()) setRestoring(false)})
-    refreshSessions().catch(() => {})
+    api<Status>('/status').then(async value => {
+      if (!current()) return
+      setStatus(value)
+      await configureUserMode(value.auth_mode)
+    }).catch(error => {if (current() && !(error instanceof StaleIdentityError)) setError((error as Error).message)})
+    api<{items: Character[]}>('/characters').then(value => {if (current()) {setCharacters(value.items); setCatalogState('ready')}}).catch(error => {if (current()) {setCatalogState('error'); setError((error as Error).message)}})
     return () => {cancelled = true}
   }, [])
 
+  useEffect(() => {
+    if (userAuth.phase !== 'demo' && userAuth.phase !== 'authenticated') return
+    let cancelled = false
+    const context = identityContext()
+    const current = () => !cancelled && identityIsCurrent(context)
+    const selection = sessionSelection.current
+    const selectionCurrent = () => current() && selection === sessionSelection.current
+    knownIds.current = userAuth.mode === 'local_demo' ? readKnownSessions() : []
+    setRestoring(true)
+    const activeKey = getUserSessionKey('harbor-session')
+    const sid = localStorage.getItem(activeKey)
+    const restore = sid ? userApi<Session>(`/sessions/${sid}`).then(value => {
+      if (selectionCurrent()) {setSession(value); setSelectedCharacterId(value.character_id || 'nova'); setMode(value.mode); setTab('chat')}
+    }).catch(error => {
+      if (!selectionCurrent()) return
+      if (error instanceof ApiError && error.status === 404) localStorage.removeItem(activeKey)
+      if (!(error instanceof StaleIdentityError)) setError(translator(readLanguage())('restoreError', {error: (error as Error).message}))
+    }) : Promise.resolve()
+    restore.finally(() => {if (current()) setRestoring(false)})
+    refreshSessions().catch(error => {if (current() && !(error instanceof StaleIdentityError)) setError((error as Error).message)})
+    return () => {cancelled = true}
+  }, [userAuth.epoch, userAuth.phase])
   useEffect(() => {
     const viewport = window.visualViewport
     const update = () => {
@@ -174,91 +234,149 @@ export function App() {
     if (characters.length && !characters.some(item => item.id === selectedCharacterId)) setSelectedCharacterId(characters[0].id)
   }, [characters, selectedCharacterId])
 
-  async function refresh(sid: string) {setSession(await api<Session>(`/sessions/${sid}`))}
+  async function refresh(sid: string) {
+    const context = identityContext()
+    const selection = sessionSelection.current
+    const value = await userApi<Session>(`/sessions/${sid}`)
+    if (identityIsCurrent(context) && selection === sessionSelection.current) setSession(value)
+  }
 
   async function start() {
+    if (userAuth.phase !== 'demo' && userAuth.phase !== 'authenticated') {setTab('me'); setDesktopDetail('me'); setError(t('accountRequired')); return}
     if (!adult || busy || !characters.some(item => item.id === selectedCharacterId)) return
-    if (knownIds.current.length >= 20) {setError(t('sessionLimit')); return}
+    if (userAuth.mode === 'local_demo' && knownIds.current.length >= 20) {setError(t('sessionLimit')); return}
+    sessionSelection.current += 1
+    const context = identityContext()
+    const activeKey = getUserSessionKey('harbor-session')
     setBusy(true); setError('')
     try {
-      const created = await api<{id: string}>('/sessions', 'POST', {adult_confirmed: adult, mode, character_id: selectedCharacterId, language, ...(reuseMemories && session ? {memory_from_session_id: session.id} : {})})
-      knownIds.current = persistKnownSessions([created.id, ...knownIds.current])
-      localStorage.setItem(getSessionKey('harbor-session'), created.id)
+      const created = await userApi<{id: string}>('/sessions', 'POST', {adult_confirmed: adult, mode, character_id: selectedCharacterId, language, ...(reuseMemories && session ? {memory_from_session_id: session.id} : {})})
+      if (!identityIsCurrent(context)) return
+      if (userAuth.mode === 'local_demo') knownIds.current = persistKnownSessions([created.id, ...knownIds.current])
+      localStorage.setItem(activeKey, created.id)
       await refresh(created.id)
+      if (!identityIsCurrent(context)) return
       setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false); setLastRun(null); setFailedTrace([]); retry.current = null; setTab('chat')
-      refreshSessions().catch(() => {})
-    } catch (e) {setError((e as Error).message)} finally {setBusy(false)}
+      refreshSessions().catch(error => {if (identityIsCurrent(context)) setError((error as Error).message)})
+    } catch (error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
   async function restoreSession(sid: string) {
     if (busy) return
+    sessionSelection.current += 1
+    const context = identityContext()
+    const activeKey = getUserSessionKey('harbor-session')
     setBusy(true); setError('')
     try {
-      const restored = await api<Session>(`/sessions/${sid}`)
+      const restored = await userApi<Session>(`/sessions/${sid}`)
+      if (!identityIsCurrent(context)) return
       setSession(restored); setSelectedCharacterId(restored.character_id || 'nova'); setMode(restored.mode)
-      localStorage.setItem(getSessionKey('harbor-session'), sid)
+      localStorage.setItem(activeKey, sid)
       setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false); setLastRun(null); setFailedTrace([]); retry.current = null; setTab('chat')
-    } catch (e) {setError((e as Error).message)} finally {setBusy(false)}
+    } catch (error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
   async function send(text = draft) {
     if (!session || !text.trim() || busy) return
+    const context = identityContext()
     const sid = session.id
     setBusy(true); setSending(true); setError(''); setDraft(''); setPendingText(text); setLastRun(null); setFailedTrace([])
     const request = retry.current?.sid === sid && retry.current.text === text ? retry.current : {sid, text, id: crypto.randomUUID(), language}
     retry.current = request
     try {
-      const result = await api<Run>(`/sessions/${sid}/chat`, 'POST', {message: text, request_id: request.id, language: request.language})
-      setLastRun(result); await refresh(sid); retry.current = null
-      refreshSessions().catch(() => {})
-    } catch (e) {setError((e as Error).message); setDraft(text); if (e instanceof ApiError && e.trace.length) setFailedTrace(e.trace as Trace[])} finally {setBusy(false); setSending(false); setPendingText('')}
+      const result = await userApi<Run>(`/sessions/${sid}/chat`, 'POST', {message: text, request_id: request.id, language: request.language})
+      if (!identityIsCurrent(context)) return
+      setLastRun(result); await refresh(sid)
+      if (!identityIsCurrent(context)) return
+      retry.current = null
+      refreshSessions().catch(error => {if (identityIsCurrent(context)) setError((error as Error).message)})
+    } catch (error) {
+      if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) {setError((error as Error).message); setDraft(text); if (error instanceof ApiError && error.trace.length) setFailedTrace(error.trace as Trace[])}
+    } finally {if (identityIsCurrent(context)) {setBusy(false); setSending(false); setPendingText('')}}
   }
 
   async function memoryAction(mid: string, action: 'approve' | 'delete') {
     if (!session || busy) return
+    const context = identityContext()
     setBusy(true); setError('')
-    try {await api(`/sessions/${session.id}/memories/${mid}/${action}`, 'POST'); await refresh(session.id)} catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+    try {await userApi(`/sessions/${session.id}/memories/${mid}/${action}`, 'POST'); if (identityIsCurrent(context)) await refresh(session.id)} catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
   async function addMemory() {
     if (!session || !memoryDraft.trim() || busy) return
+    const context = identityContext()
     setBusy(true); setError('')
-    try {await api(`/sessions/${session.id}/memories`, 'POST', {content: memoryDraft.trim()}); setMemoryDraft(''); await refresh(session.id)} catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+    try {
+      await userApi(`/sessions/${session.id}/memories`, 'POST', {content: memoryDraft.trim()})
+      if (identityIsCurrent(context)) {setMemoryDraft(''); await refresh(session.id)}
+    } catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
   async function correctMemory() {
     if (!session || !editingMemory || busy) return
     if (!correction.trim()) {setError(t('memoryEditError')); return}
+    const context = identityContext()
     setBusy(true); setError('')
     try {
-      await api(`/sessions/${session.id}/memories/${editingMemory}`, 'PUT', {content: correction.trim()})
-      await refresh(session.id); setEditingMemory(null); setCorrection('')
-    } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+      const approvePending = session.memories.some(item => item.id === editingMemory && item.status === 'pending')
+      await userApi(`/sessions/${session.id}/memories/${editingMemory}`, 'PUT', {content: correction.trim(), approve_pending: approvePending})
+      if (!identityIsCurrent(context)) return
+      await refresh(session.id)
+      if (identityIsCurrent(context)) {setEditingMemory(null); setCorrection('')}
+    } catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
   }
 
   async function runAnalysis(text = question) {
     if (busy) return
     if (!text.trim()) {setError(t('questionError')); return}
-    const epoch = connectionEpoch.current
+    const context = identityContext()
     setBusy(true); setAnalyzing(true); setQuestion(text); setError(''); setAnalysis(null); setAnalysisFailure([])
     try {
-      const result = await api<Analysis>('/data-agent', 'POST', {question: text.trim()})
-      if (epoch === connectionEpoch.current) setAnalysis(result)
-    } catch(e) {if (epoch === connectionEpoch.current) {setError((e as Error).message); if (e instanceof ApiError && e.trace.length) setAnalysisFailure(e.trace as Trace[])}} finally {setBusy(false); setAnalyzing(false)}
+      const result = await userApi<Analysis>('/data-agent', 'POST', {question: text.trim()})
+      if (identityIsCurrent(context)) setAnalysis(result)
+    } catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) {setError((error as Error).message); if (error instanceof ApiError && error.trace.length) setAnalysisFailure(error.trace as Trace[])}} finally {if (identityIsCurrent(context)) {setBusy(false); setAnalyzing(false)}}
   }
 
   async function clear(all: boolean) {
     if (!session || busy || !confirm(t(all ? 'deleteConfirm' : 'clearConfirm'))) return
+    const context = identityContext()
+    const activeKey = getUserSessionKey('harbor-session')
     const sid = session.id
     setBusy(true); setError('')
     try {
-      await api(`/sessions/${sid}${all ? '' : '/history'}`, 'DELETE'); setLastRun(null); setFailedTrace([]); retry.current = null; setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false)
+      await userApi(`/sessions/${sid}${all ? '' : '/history'}`, 'DELETE')
+      if (!identityIsCurrent(context)) return
+      setLastRun(null); setFailedTrace([]); retry.current = null; setDraft(''); setMemoryDraft(''); setEditingMemory(null); setReuseMemories(false)
       if (all) {
-        knownIds.current = persistKnownSessions(knownIds.current.filter(id => id !== sid))
-        localStorage.removeItem(getSessionKey('harbor-session')); setSession(null); setTab('characters')
+        if (userAuth.mode === 'local_demo') knownIds.current = persistKnownSessions(knownIds.current.filter(id => id !== sid))
+        localStorage.removeItem(activeKey); setSession(null); setTab('characters')
       } else await refresh(sid)
-      refreshSessions().catch(() => {})
-    } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+      if (identityIsCurrent(context)) refreshSessions().catch(error => {if (identityIsCurrent(context)) setError((error as Error).message)})
+    } catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
+  }
+
+  async function loadMoreSessions() {
+    if (!nextCursor || busy) return
+    const context = identityContext()
+    setBusy(true); setError('')
+    try {await refreshSessions(undefined, nextCursor)} catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
+  }
+
+  async function changeReviewAccess(allowed: boolean) {
+    if (!session || busy) return
+    const context = identityContext()
+    setBusy(true); setError('')
+    try {
+      await userApi(`/sessions/${session.id}/review-access`, 'POST', {allowed})
+      if (identityIsCurrent(context)) await refresh(session.id)
+    } catch(error) {if (identityIsCurrent(context) && !(error instanceof StaleIdentityError)) setError((error as Error).message)} finally {if (identityIsCurrent(context)) setBusy(false)}
+  }
+
+  async function logout() {
+    const task = signOutUser()
+    const context = identityContext()
+    const confirmed = await task
+    if (identityIsCurrent(context)) setConnectionNotice(t(confirmed ? 'signedOut' : 'logoutUnconfirmed'))
   }
 
   async function reloadService() {
@@ -267,31 +385,24 @@ export function App() {
     try {
       const [service, catalog] = await Promise.all([api<Status>('/status'), api<{items: Character[]}>('/characters')])
       if (epoch !== connectionEpoch.current) return
-      setStatus(service); setCharacters(catalog.items); setCatalogState('ready'); await refreshSessions()
-    } catch(e) {if (epoch === connectionEpoch.current) {setCatalogState('error'); setError((e as Error).message)}}
+      setStatus(service); setCharacters(catalog.items); setCatalogState('ready')
+      const identity = await configureUserMode(service.auth_mode)
+      if (identity.phase === 'demo' || identity.phase === 'authenticated') await refreshSessions()
+    } catch(error) {if (epoch === connectionEpoch.current && !(error instanceof StaleIdentityError)) {setCatalogState('error'); setError((error as Error).message)}}
   }
 
   async function saveConnection(reset = false) {
-    if (busy) return
     setConnectionNotice(''); setError('')
+    let epoch = connectionEpoch.current
     try {
       if (reset) clearConnection(); else setConnection(connection)
-      setBusy(true); connectionEpoch.current += 1
-      setConnectionDraft(getConnection())
-      setSession(null); setSessions([]); setLastRun(null); retry.current = null
-      setEditingMemory(null); setReuseMemories(false); setAnalysis(null); setFailedTrace([]); setAnalysisFailure([])
-      setStatus(null); setCharacters([]); setCatalogState('loading'); setDraft(''); setMemoryDraft(''); setRestoring(false)
-      knownIds.current = readKnownSessions()
-      setConnectionNotice(t('connectionUpdated'))
+      epoch = ++connectionEpoch.current
+      resetUserIdentity(); resetPrivateState(); setTab('me'); setDesktopDetail('me')
+      setConnectionDraft(getConnection()); setStatus(null); setCharacters([]); setCatalogState('loading')
       await reloadService()
-      const sid = localStorage.getItem(getSessionKey('harbor-session'))
-      if (sid) {
-        const restored = await api<Session>(`/sessions/${sid}`)
-        setSession(restored); setSelectedCharacterId(restored.character_id || 'nova'); setMode(restored.mode)
-      }
-    } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+      if (epoch === connectionEpoch.current) setConnectionNotice(t('connectionUpdated'))
+    } catch(error) {if (epoch === connectionEpoch.current && !(error instanceof StaleIdentityError)) setError((error as Error).message)}
   }
-
   function goToTab(next: Tab) {
     setTab(next)
     if (next === 'memory' || next === 'me') setDesktopDetail(next)
@@ -301,6 +412,7 @@ export function App() {
   const currentCharacter = {...(characters.find(item => item.id === session?.character_id) || fallbackCharacter), name: session?.character_name || 'Nova'}
   const characterName = session?.character_name || currentCharacter.name
   const mock = status?.provider === 'mock'
+  const identityReady = userAuth.phase === 'demo' || userAuth.phase === 'authenticated'
   const pendingCount = session?.memories.filter(memory => memory.status === 'pending').length || 0
 
   return <div className={`app-shell tab-${tab} detail-${desktopDetail} language-${language} ${keyboardOpen ? 'keyboard-open' : ''}`}>
@@ -308,7 +420,7 @@ export function App() {
       <button className="brand" onClick={() => goToTab('characters')} aria-label={t('brandHome')}><span className="brand-icon">◒</span><span><strong>harbor<span className="brand-dot">.</span></strong><small>{t('brand')}</small></span></button>
       <div className="topbar-right"><label className="language-control"><span className="sr-only">{t('language')}</span><select aria-label={t('language')} value={language} onChange={event => setLanguage(event.target.value as Language)}><option value="zh">中文</option><option value="en">EN</option></select></label><span className={`provider-pill ${mock ? 'mock' : ''}`} title={t(mock ? 'mockHint' : 'apiHint')}><i/>{status ? mock ? t('mockStatus') : status.configured ? t('apiConfigured') : t('modelPending') : t('connecting')}</span><button className="desktop-account icon-button" aria-label={t('accountLabel')} onClick={() => goToTab('me')}>☷</button></div>
     </header>
-    {error && <div className="global-error" role="alert"><span>{error}</span>{retry.current && session?.id === retry.current.sid && <button disabled={busy} onClick={() => send(retry.current!.text)}>{t('retry')}</button>}<button className="error-dismiss" onClick={() => setError('')} aria-label={t('dismiss')}>×</button></div>}
+    {error && <div className="global-error" role="alert"><span>{localizeApiMessage(error, language)}</span>{retry.current && session?.id === retry.current.sid && <button disabled={busy} onClick={() => send(retry.current!.text)}>{t('retry')}</button>}<button className="error-dismiss" onClick={() => setError('')} aria-label={t('dismiss')}>×</button></div>}
     <main className="layout">
       <section className="character-panel page-panel" aria-label={t('chooseCharacter')}>
         <div className="page-heading"><p className="eyebrow">YOUR LITTLE HARBOR</p><h1>{t('characterTitle')}</h1><p className="muted">{t('characterSubtitle')}</p></div>
@@ -323,7 +435,7 @@ export function App() {
         <div className="mode-options"><button disabled={busy} className={mode === 'friend' ? 'selected' : ''} onClick={() => setMode('friend')} aria-pressed={mode === 'friend'}><span>◌ {t('friend')}</span><small>{t('friendHint')}</small></button><button disabled={busy} className={mode === 'gentle_romance' ? 'selected' : ''} onClick={() => setMode('gentle_romance')} aria-pressed={mode === 'gentle_romance'}><span>♡ {t('romance')}</span><small>{t('romanceHint')}</small></button></div>
         {session && <div className="memory-reuse"><label><input type="checkbox" checked={reuseMemories} disabled={busy} onChange={event => setReuseMemories(event.target.checked)}/><span>{t('shareMemory', {name: characterName})}</span></label><p>{t(reuseMemories ? 'shareHint' : 'isolatedHint')}</p></div>}
         <label className="adult-check"><input type="checkbox" checked={adult} disabled={busy} onChange={event => setAdult(event.target.checked)}/><span>{t('adult')}</span></label>
-        <button className="primary start-chat" disabled={!adult || busy || !status || !characters.length} onClick={start}>{busy && !sending ? t('processing') : t(session ? 'startNew' : 'start', {name: selectedCharacter.name})}<span>↗</span></button>
+        {identityReady ? <button className="primary start-chat" disabled={!adult || busy || !status || !characters.length} onClick={start}>{busy && !sending ? t('processing') : t(session ? 'startNew' : 'start', {name: selectedCharacter.name})}<span>↗</span></button> : <button className="primary start-chat" onClick={() => goToTab('me')}>{t(userAuth.mode === 'accounts' ? 'signIn' : 'appConnection')}<span>↗</span></button>}
         {session && <p className="micro">{t('previousSessions')}</p>}
         <p className="footer-note">{t('footer')}</p>
       </section>
@@ -368,13 +480,15 @@ export function App() {
 
         <section className="account-panel page-panel" aria-label={t('accountLabel')}>
           <div className="page-heading"><p className="eyebrow">YOUR SPACE, YOUR PACE</p><h2>{t('myTitle')}<span>◒</span></h2><p className="muted">{t('mySubtitle')}</p></div>
-          <div className="section-title"><h3>{t('deviceSessions')}</h3><button className="text-button" disabled={busy} onClick={() => goToTab('characters')}>＋ {t('newChat')}</button></div>
-          <p className="micro session-list-note">{t('deviceHint')}</p>
+          <div className="user-account-card"><span className="account-mode-label">{status ? t(userAuth.mode === 'accounts' ? 'accountMode' : 'localDemo') : t('connectionNeeded')}</span>{userAuth.phase === 'checking' ? <p className="micro" role="status">{t('authChecking')}</p> : userAuth.phase === 'demo' ? <p className="micro">{t('demoAccountHint')}</p> : userAuth.phase === 'authenticated' ? <div className="signed-in-account"><div><small>{t('signedInAs')}</small><strong>{userAuth.user?.username}</strong></div><button className="secondary" onClick={logout}>{t('signOut')}</button></div> : <AuthPanel key={`${userAuth.backendKey}:${userAuth.epoch}`} language={language} registrationEnabled={Boolean(status?.registration_enabled)}/>}</div>
+          <div className="section-title"><h3>{t(userAuth.mode === 'accounts' ? 'accountSessions' : 'deviceSessions')}</h3><button className="text-button" disabled={busy || !identityReady} onClick={() => goToTab('characters')}>＋ {t('newChat')}</button></div>
+          <p className="micro session-list-note">{t(userAuth.mode === 'accounts' ? 'accountDeviceHint' : 'deviceHint')}</p>
           <div className="session-list">{sessions.length ? sessions.map(item => <button key={item.id} disabled={busy} className={`session-card ${item.id === session?.id ? 'current' : ''}`} onClick={() => restoreSession(item.id)}><span className="session-card-icon">◌</span><span><strong>{item.character_name || t('aiRole')}{item.id === session?.id && <i>{t('current')}</i>}</strong><small>{modeNames[item.mode] || item.mode} · {item.turn_count} {t('turns')}</small><small>{shortDate(item.last_active || item.created, language)}</small></span><b>↗</b></button>) : <div className="small-empty">{t('noSessions')}</div>}</div>
-          <button className="data-agent-entry" onClick={() => goToTab('data')}><span>◈ {t('dataAgent')}<small>{t('dataEntryHint')}</small></span><b>↗</b></button>
+          {nextCursor && <button className="secondary load-more-sessions" disabled={busy} onClick={loadMoreSessions}>{t('loadMore')}</button>}
+          <button className="data-agent-entry" disabled={!identityReady} onClick={() => goToTab('data')}><span>◈ {t('dataAgent')}<small>{t('dataEntryHint')}</small></span><b>↗</b></button>
           <div className="settings-block"><div className="section-title"><h3>{t('appConnection')}</h3><button className="text-button" disabled={busy} onClick={reloadService}>{t('refresh')}</button></div><div className="setting-row"><span>{t('currentModel')}</span><strong>{status ? mock ? t('mockFlow') : status.model || t('pendingConfig') : t('disconnected')}</strong></div><div className="setting-row"><span>{t('dataRange')}</span><strong>{t('currentBackend')}</strong></div>{!online && language === 'en' && <p className="connection-notice" role="status">{t('offline')}</p>}{language === 'zh' ? <AppInstall/> : !isNativeApp() && <details className="install-guide"><summary>{t('installTitle')}</summary><p>{t('installHint')}</p><small>{t('installBoundary')}</small></details>}<a className="admin-entry" href="?view=admin"><span>⚙ {t('admin')}<small>{t('adminHint')}</small></span><b>↗</b></a></div>
-          <details className="connection-card"><summary>{t('connectionTitle')}<span>⌄</span></summary><p className="micro">{t('connectionHint')}</p><form className="connection-form" onSubmit={event => {event.preventDefault(); void saveConnection()}}><label htmlFor="connection-url">{t('backendAddress')}</label><input id="connection-url" type="url" autoComplete="url" placeholder="https://your-api.example.com" value={connection.baseUrl} onChange={event => setConnectionDraft({...connection, baseUrl: event.target.value})}/><label htmlFor="connection-code">{t('demoCode')}</label><input id="connection-code" type="password" autoComplete="off" placeholder={t('demoCodePlaceholder')} value={connection.accessToken} onChange={event => setConnectionDraft({...connection, accessToken: event.target.value})}/><div><button type="submit" disabled={busy}>{t('saveConnection')}</button><button className="text-button" type="button" disabled={busy} onClick={() => saveConnection(true)}>{t('resetConnection')}</button></div></form>{connectionNotice && <p className="connection-notice" role="status">{connectionNotice}</p>}<p className="micro">{t('connectionFooter')}</p></details>
-          <details className="privacy-card"><summary>{t('privacyTitle')}<span>⌄</span></summary><p>{t('privacy1')}</p><p>{t('privacy2')}</p><p>{t('privacy3')}</p></details>
+          <details className="connection-card"><summary>{t('connectionTitle')}<span>⌄</span></summary><p className="micro">{t('connectionHint')}</p><form className="connection-form" onSubmit={event => {event.preventDefault(); void saveConnection()}}><label htmlFor="connection-url">{t('backendAddress')}</label><input id="connection-url" type="url" autoComplete="url" placeholder="https://your-api.example.com" value={connection.baseUrl} onChange={event => setConnectionDraft({...connection, baseUrl: event.target.value})}/><label htmlFor="connection-code">{t('demoCode')}</label><input id="connection-code" type="password" autoComplete="off" placeholder={t('demoCodePlaceholder')} value={connection.accessToken} onChange={event => setConnectionDraft({...connection, accessToken: event.target.value})}/><div><button type="submit">{t('saveConnection')}</button><button className="text-button" type="button" onClick={() => saveConnection(true)}>{t('resetConnection')}</button></div></form>{connectionNotice && <p className="connection-notice" role="status">{connectionNotice}</p>}<p className="micro">{t('connectionFooter')}</p></details>
+          <details className="privacy-card"><summary>{t('privacyTitle')}<span>⌄</span></summary><p>{t(userAuth.mode === 'accounts' ? 'privacyAccounts' : 'privacy1')}</p><p>{t('privacy2')}</p><p>{t('privacy3')}</p>{session && userAuth.mode === 'accounts' && <div className="review-access-control"><label><input type="checkbox" checked={session.review_access_allowed === true} disabled={busy} onChange={event => changeReviewAccess(event.target.checked)}/><span>{t('reviewAccess')}</span></label><p>{t('reviewAccessHint')}</p><small>{t(session.review_access_allowed === true ? 'reviewAccessOn' : 'reviewAccessOff')}</small></div>}</details>
           {session && <><details className="insights-card"><summary>{t('insights')}<span>⌄</span></summary><p className="micro">{t('insightsHint')}</p><div className="metrics"><div><span>{t('completed')}</span><strong>{session.insights.turn_count}<small> {t('turns')}</small></strong></div><div><span>{t('medianTime')}</span><strong>{session.insights.median_latency_ms ?? '—'}<small> ms</small></strong></div></div><p className="micro">{t('mockTime')}</p><div className="mood-bars">{Object.entries(session.insights.emotion_counts).map(([key, value]) => <div key={key}><span>{moodNames[key] || key}</span><div><i style={{width: `${value / Math.max(session.insights.turn_count, 1) * 100}%`}}/></div><b>{value}</b></div>)}</div></details>
             <details className="trace"><summary>{t(failedTrace.length ? 'failureTrace' : 'traceTitle')}<span>⌄</span></summary>{lastRun || failedTrace.length ? <><p className="micro">{t('traceHint')}</p><TraceList items={failedTrace.length ? failedTrace : lastRun!.trace} language={language}/></> : <p className="micro">{t('traceEmpty')}</p>}</details>
             <div className="data-actions"><h3>{t('sessionData')}</h3><button disabled={busy} onClick={() => clear(false)}><span>{t('clearHistory')}<small>{t('clearHistoryHint')}</small></span><b>↗</b></button><button className="danger" disabled={busy} onClick={() => clear(true)}><span>{t('deleteSession')}<small>{t('deleteSessionHint')}</small></span><b>×</b></button></div>
