@@ -153,6 +153,18 @@ class UserAuth:
             raise authentication_error(401, "Invalid user credentials.")
         return self.issue(self.public_user(row))
 
+    async def verify_password(self, user_id, password):
+        """Reauthenticate a current user without creating or renewing a token."""
+        if not isinstance(password, str) or not 12 <= len(password) <= 128:
+            raise authentication_error(403, "Current password is incorrect.")
+        with self.store.connect() as db:
+            row = db.execute("SELECT id,username,password_hash,salt,active FROM users WHERE id=?", (user_id,)).fetchone()
+        digest = await run_in_threadpool(password_digest, password, row["salt"] if row else "00" * 16)
+        expected = row["password_hash"] if row else "00" * 32
+        if not hmac.compare_digest(digest, expected) or not row or not row["active"]:
+            raise authentication_error(403, "Current password is incorrect.")
+        return self.public_user(row)
+
     def issue(self, user):
         expiry = int(time.time()) + self.ttl
         for _ in range(3):

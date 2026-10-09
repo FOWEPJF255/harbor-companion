@@ -4,9 +4,9 @@ This is a plan, not a promise to a recruiter or evidence of completed work. API 
 
 ## Current checkpoint: 2026-10-09
 
-The v0.4 checkpoint adds user accounts, object ownership, explicit reviewer permission, request/concurrency budgets, private redacted audit and initial real DeepSeek execution evidence. The v0.3 consent/bilingual/DataAgent foundation is preserved. Local checks and actual model runs are recorded in [evidence](evidence.md); human semantic-quality scoring and physical-phone operation remain pending. Continue from [CURRENT](CURRENT.md) rather than rebuilding milestone 0.
+The v0.5 checkpoint adds reauthenticated owner export/account erasure, late-run deletion guards, audit provenance, startup/hourly-on-request security retention and disposable backup recovery. The v0.4 accounts/operations and initial actual DeepSeek evidence, and v0.3 consent/bilingual/DataAgent foundation, are preserved. Local checks and actual model runs are recorded in [evidence](evidence.md); human semantic-quality scoring and physical-phone operation remain pending. Continue from [CURRENT](CURRENT.md) rather than rebuilding milestone 0.
 
-The owner's new enterprise-engineering direction is tracked in [production readiness](enterprise-readiness.md), derived from [official market sources](market-requirements-2026-10-09.md). Finish owner data lifecycle and quality feedback next. Organization tenancy, distributed infrastructure and a production launch are not completed by the account foundation.
+The owner's new enterprise-engineering direction is tracked in [production readiness](enterprise-readiness.md), derived from [official market sources](market-requirements-2026-10-09.md). Finish the response-feedback/triage/regression loop next. Organization tenancy, distributed infrastructure and a production launch are not completed by this foundation. Larger export jobs, backup TTL and erasure-ledger recovery remain explicit operational gaps.
 
 Existing voice, dynamic-avatar and outreach deferrals remain in force. Streaming is optional only after an observed UX need, not a required new feature.
 

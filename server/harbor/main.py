@@ -20,6 +20,7 @@ from .providers import CompatibleProvider, MockProvider, ProviderError
 from .store import Store
 from .user_auth import UserAuth, user_router
 from .operations import RunBudgets
+from .account_lifecycle import account_router
 
 
 class NewSession(BaseModel):
@@ -72,13 +73,13 @@ def create_app(settings=None, provider=None):
         if parsed.scheme != "https" or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
             raise ValueError("Additional browser origins must be exact HTTPS origins, without paths or credentials.")
     store = Store(settings.db_path)
-    store.prune_audit(settings.audit_retention_days)
+    store.maintenance(settings.audit_retention_days, force=True)
     user_auth = UserAuth(store, settings)
     budgets = RunBudgets(settings)
     provider = provider or (MockProvider() if settings.provider == "mock" else CompatibleProvider(settings))
     agent = Agent(store, provider, settings)
     locks = {}
-    app = FastAPI(title="HarborCompanion", version="0.4.0")
+    app = FastAPI(title="HarborCompanion", version="0.5.0")
     app.state.store = store
     app.state.user_auth = user_auth
     app.state.budgets = budgets
@@ -103,6 +104,8 @@ def create_app(settings=None, provider=None):
             supplied = request.headers.get("x-harbor-access", "")
             if not secrets.compare_digest(supplied, settings.client_token):
                 return JSONResponse({"detail": "Demo access code is required."}, status_code=403, headers={"Cache-Control": "no-store"})
+        if request.url.path.startswith("/api/"):
+            store.maintenance(settings.audit_retention_days)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -117,6 +120,13 @@ def create_app(settings=None, provider=None):
                        allow_headers=["Content-Type", "Authorization", "X-Harbor-Access"])
     app.include_router(user_router(user_auth))
     app.include_router(admin_router(store, settings, user_auth, budgets))
+
+    def forget_account(sids, user_id):
+        for sid in sids:
+            locks.pop(sid, None)
+        budgets.requests.pop(user_id, None)
+
+    app.include_router(account_router(store, user_auth, on_erased=forget_account))
 
     async def principal(request: Request):
         return await user_auth.require(request) if settings.auth_mode == "accounts" else None
@@ -133,6 +143,12 @@ def create_app(settings=None, provider=None):
         if not session or session["owner_user_id"] != (owner["id"] if owner else None):
             raise HTTPException(404, "Session not found")
         return session
+
+    async def current_owner(request, owner):
+        if owner:
+            current = await user_auth.require(request)
+            if current["id"] != owner["id"]:
+                raise HTTPException(401, "User login required.")
 
     def lock(sid):
         return locks.setdefault(sid, asyncio.Lock())
@@ -153,7 +169,7 @@ def create_app(settings=None, provider=None):
     async def status():
         ready = settings.provider == "mock" or bool(settings.api_base and settings.api_key and settings.model)
         return {"provider": settings.provider, "configured": ready, "model": settings.model if settings.provider != "mock" else None,
-                "stage": "v0.4 controlled app + account foundation", "quality_evidence": "pending human-reviewed companion-quality evaluation",
+                "stage": "v0.5 controlled app + owner data lifecycle", "quality_evidence": "pending human-reviewed companion-quality evaluation",
                 "access_code_required": bool(settings.client_token), "auth_mode": settings.auth_mode,
                 "registration_enabled": settings.auth_mode == "accounts" and settings.registration_enabled}
 
@@ -208,6 +224,7 @@ def create_app(settings=None, provider=None):
         try:
             async with budgets.slot():
                 result = await asyncio.wait_for(asyncio.to_thread(analyze, body.question), timeout=settings.tool_timeout)
+            await current_owner(request, owner)
             store.audit_event(actor(owner, request), "synthetic_analysis", count=len(result.get("rows", [])))
             return result
         except ValueError:
@@ -253,14 +270,23 @@ def create_app(settings=None, provider=None):
                 async with budgets.slot():
                     result = await agent.run(sid, text, body.language)
             except AgentFailure as exc:
+                await current_owner(request, owner)
+                require(sid, owner)
                 store.audit_event(actor(owner, request), "run_failed", sid, provider=exc.provider,
                                   reason=exc.reason, duration_ms=exc.latency_ms)
                 return JSONResponse(status_code=502, content={"detail": "Model could not complete the turn. No mock fallback or half-turn was saved.",
                     "failure_reason": exc.reason, "trace": exc.trace, "provider": exc.provider, "latency_ms": exc.latency_ms})
             except (ProviderError, TimeoutError):
+                await current_owner(request, owner)
+                require(sid, owner)
                 store.audit_event(actor(owner, request), "run_failed", sid, reason="provider_or_timeout")
                 raise HTTPException(502, "Model could not complete the turn. No mock fallback or half-turn was saved.") from None
-            saved = store.commit_turn(sid, body.request_id, text, result)
+            await current_owner(request, owner)
+            require(sid, owner)
+            try:
+                saved = store.commit_turn(sid, body.request_id, text, result)
+            except ValueError:
+                raise HTTPException(404, "Session not found") from None
             usage = (saved.get("usage") or {}).get("total_tokens")
             store.audit_event(actor(owner, request), "run_completed", sid, provider=saved["provider"],
                               run_id=saved["run_id"], duration_ms=saved["latency_ms"],

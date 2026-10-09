@@ -4,6 +4,7 @@ import { api, ApiError, clearConnection, getConnection, localizeApiMessage, setC
 import { AppInstall, isNativeApp, registerAppShell } from './AppInstall'
 import { analysisQuestions, readLanguage, starters, storeLanguage, translator, type Language, type TextKey } from './i18n'
 import { AuthPanel } from './AuthPanel'
+import { AccountDataPanel } from './AccountDataPanel'
 import { configureUserMode, expireUser, getUserAuth, getUserSessionKey, identityContext, identityIsCurrent, resetUserIdentity, signOutUser, StaleIdentityError, subscribeUserAuth, userApi, type AuthMode } from './user-auth'
 import './style.css'
 
@@ -116,6 +117,7 @@ export function App() {
   const [restoring, setRestoring] = useState(true)
   const [connection, setConnectionDraft] = useState(getConnection)
   const [connectionNotice, setConnectionNotice] = useState('')
+  const [accountNotice, setAccountNotice] = useState<TextKey | null>(null)
   const retry = useRef<{sid: string; text: string; id: string; language: Language} | null>(null)
   const knownIds = useRef<string[]>([])
   const messagesEnd = useRef<HTMLDivElement>(null)
@@ -129,6 +131,9 @@ export function App() {
     storeLanguage(language)
     document.title = language === 'en' ? 'Harbor · AI companion' : '港湾 · AI 陪伴'
   }, [language])
+  useEffect(() => {
+    if (userAuth.phase !== 'signed_out') setAccountNotice(null)
+  }, [userAuth.phase, userAuth.backendKey])
   useEffect(() => {
     const sync = () => setOnline(navigator.onLine)
     window.addEventListener('online', sync); window.addEventListener('offline', sync)
@@ -481,6 +486,8 @@ export function App() {
         <section className="account-panel page-panel" aria-label={t('accountLabel')}>
           <div className="page-heading"><p className="eyebrow">YOUR SPACE, YOUR PACE</p><h2>{t('myTitle')}<span>◒</span></h2><p className="muted">{t('mySubtitle')}</p></div>
           <div className="user-account-card"><span className="account-mode-label">{status ? t(userAuth.mode === 'accounts' ? 'accountMode' : 'localDemo') : t('connectionNeeded')}</span>{userAuth.phase === 'checking' ? <p className="micro" role="status">{t('authChecking')}</p> : userAuth.phase === 'demo' ? <p className="micro">{t('demoAccountHint')}</p> : userAuth.phase === 'authenticated' ? <div className="signed-in-account"><div><small>{t('signedInAs')}</small><strong>{userAuth.user?.username}</strong></div><button className="secondary" onClick={logout}>{t('signOut')}</button></div> : <AuthPanel key={`${userAuth.backendKey}:${userAuth.epoch}`} language={language} registrationEnabled={Boolean(status?.registration_enabled)}/>}</div>
+          {accountNotice && <p className="connection-notice" role="status">{t(accountNotice)}</p>}
+          {userAuth.mode === 'accounts' && userAuth.phase === 'authenticated' && <AccountDataPanel key={`${userAuth.backendKey}:${userAuth.epoch}`} language={language} disabled={busy} onDeleted={() => setAccountNotice('accountDeleted')}/>}
           <div className="section-title"><h3>{t(userAuth.mode === 'accounts' ? 'accountSessions' : 'deviceSessions')}</h3><button className="text-button" disabled={busy || !identityReady} onClick={() => goToTab('characters')}>＋ {t('newChat')}</button></div>
           <p className="micro session-list-note">{t(userAuth.mode === 'accounts' ? 'accountDeviceHint' : 'deviceHint')}</p>
           <div className="session-list">{sessions.length ? sessions.map(item => <button key={item.id} disabled={busy} className={`session-card ${item.id === session?.id ? 'current' : ''}`} onClick={() => restoreSession(item.id)}><span className="session-card-icon">◌</span><span><strong>{item.character_name || t('aiRole')}{item.id === session?.id && <i>{t('current')}</i>}</strong><small>{modeNames[item.mode] || item.mode} · {item.turn_count} {t('turns')}</small><small>{shortDate(item.last_active || item.created, language)}</small></span><b>↗</b></button>) : <div className="small-empty">{t('noSessions')}</div>}</div>

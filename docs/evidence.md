@@ -1,4 +1,17 @@
-# Initial evidence
+# Evidence history
+
+## Latest owner-data lifecycle iteration, v0.5
+
+Date: 2026-10-09, Asia/Shanghai. [Complete iteration, commands and repair record](iteration-2026-10-09-v0.5.md).
+
+- Final backend suite: **321 passed**, one existing Starlette/httpx warning, **66.46 seconds**.
+- Independent application evaluator: **50/50**, **zero new live-model calls**; [full JSON](evidence/framework-v0.5-2026-10-09.json).
+- Actual authored-synthetic backup/recovery drill: **10/10 checks**, integrity/FK checks passed, two old user tokens removed from restored copy; [safe metadata evidence](evidence/backup-drill-v0.5-2026-10-09.json).
+- Frontend TypeScript/Vite production build passed. Loopback v0.5 backend, database readiness and rebuilt frontend HTTP 200 checked; current visual/native download acceptance remains pending after browser automation failure.
+- Account export/deletion, byte/concurrency bounds, cross-owner preservation, rollback, late/queued model protection, audit provenance and retention are covered by synthetic tests. No real owner's account was deleted and no private database was restored.
+- Existing actual DeepSeek evidence remains eight authored scenarios/ten real requests from v0.4, with human quality scores pending. Packaging evidence is maintained in [app delivery](app-delivery.md).
+
+## Initial framework record
 
 Date: 2026-10-09. Stage: local framework; model quality pending.
 

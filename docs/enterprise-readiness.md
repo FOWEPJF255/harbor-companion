@@ -8,7 +8,7 @@ Harbor is an adult, disclosed character companion APP with a bounded agent runti
 
 The [market research](market-requirements-2026-10-09.md) records 14 first-party sources, their retrieval dates, limitations, and proposed priorities. The most immediate engineering signals are [object authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/), [resource limits](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/), and [redacted GenAI observability](https://opentelemetry.io/blog/2026/genai-observability/). These guide this implementation; they do not certify it.
 
-## Implemented v0.4 foundation
+## Implemented foundation through v0.5
 
 | Area | Actual implementation | Evidence and scope |
 | --- | --- | --- |
@@ -23,6 +23,8 @@ The [market research](market-requirements-2026-10-09.md) records 14 first-party 
 | Operations | Authenticated budget snapshot and up to 100 recent audit events | `/api/admin/operations`; process counters reset after restart |
 | Readiness | `/api/health` checks database availability without exposing keys or probing a billable model | Synthetic endpoint tests; `provider_configured` is configuration presence, not provider uptime |
 | Actual model integration | Official DeepSeek Chat Completions adapter, non-thinking mode, strict response parsing, no mock fallback | Eight synthetic scenarios, ten actual API calls; [model evidence](evidence/live-deepseek-2026-10-09.json) |
+| Owner data lifecycle | Password-reauthenticated bounded complete-row export and explicit transactional account erasure; late work cannot repersist owned data | [Inventory, authorization and limits](account-data-lifecycle.md); synthetic cross-owner, rollback and concurrency checks |
+| Disposable recovery | Consistent SQLite snapshot, new-file restore, integrity/schema/FK validation, restored user-token removal | [Recovery drill](data-backup-recovery.md); no live database replacement |
 
 Account identity is not organization tenancy, multi-role RBAC, SSO, or a distributed authentication service. The reviewer role remains the single server administrator with explicit per-session permission.
 
@@ -47,12 +49,12 @@ Remote host configuration refuses to start with `local_demo`. Remote demonstrati
 
 | Store | Contents | Current lifecycle |
 | --- | --- | --- |
-| SQLite users/tokens | User ID, username, password hash/salt, adult flag, token hash and expiry/revocation | Tokens expire/revoke; account erasure/reset and automatic expired-token cleanup remain planned |
+| SQLite users/tokens | User ID, username, password hash/salt, adult flag, token hash and expiry/revocation | Explicit reauthenticated account erasure; expired/revoked tokens removed at startup/hourly on API activity; password-reset workflow remains absent |
 | SQLite sessions/messages/turns | Persona snapshot, dialogue, action/observation traces and completed-turn result | User clears history or deletes sessions; history removal also removes reviews. Historical dialogue/traces are separate from structured memory |
 | Approved-memory spaces | Confirmed facts and correction revision | Shared only within one owner after explicit source selection; last-session deletion removes the orphaned space |
 | Process memory | Unapproved proposals | Thirty-minute expiry, lost on restart; not persisted as structured facts |
-| Audit events | Pseudonymous IDs, action, permitted numeric/status metadata | Default 30 days; configured 1–90 days; cleanup currently occurs at app startup |
-| Local backups | Private consistent database snapshots | Kept outside Git; no automatic backup schedule or secure erasure promise |
+| Audit events | Pseudonymous IDs, server-derived owner provenance, action, permitted numeric/status metadata | Default 30 days, configured 1–90 days; startup/hourly-on-request cleanup; attributable records erased with account |
+| Local backups | Private consistent database snapshots | New-file validated backup/recovery tool; restored tokens removed; outside Git; no automatic schedule/TTL, deletion-ledger replay or secure-erasure promise |
 | Model provider | Recent context, approved facts and relevant tool results sent with a model request | Governed by the chosen provider; server-local storage does not mean local model inference |
 | Frontend | Session-scoped user token and backend connection; session entry handles per backend/user | Logout/expiry/backend switch clears private UI and cancels in-flight user requests; no private API/PWA caching |
 
@@ -60,7 +62,7 @@ The audit is redacted, not anonymous: persistent pseudonymous IDs can correlate 
 
 ## Remaining gates before public or enterprise operation
 
-- Owner-scoped complete export and account erasure, explicit deletion inventory, automated retention and a disposable-data restore drill.
+- Larger/chunked export jobs, password recovery, backup TTL/purge and protected erasure-ledger reconciliation before restoring private snapshots. v0.5 implements the bounded owner lifecycle and disposable recovery drill; retained snapshots may still restore deleted records.
 - Response feedback/reporting → permissioned review → triage → regression linkage. Existing admin annotations are not this complete workflow.
 - A reviewed deployment profile with TLS termination, request-body limits at ingress, trusted proxy handling, encrypted backup storage and secret rotation procedure.
 - An external or shared limiter, account/token lifecycle controls, and database migration/versioning appropriate for multiple workers. Current admission and locks are process-local.
@@ -72,6 +74,6 @@ No public service, commercial customer, payment workflow, user volume, voice/ava
 
 ## Next bounded iteration
 
-1. Complete the owner data lifecycle and response-feedback contracts on synthetic accounts.
+1. Add response feedback, permissioned triage and regression linkage on synthetic accounts; preserve the v0.5 owner lifecycle and record its remaining backup limits.
 2. Import approved synthetic/de-identified evaluation artifacts into a versioned DataAgent dataset; preserve denominator, query plan and independent arithmetic checks.
 3. Review the actual model transcripts, repair one measured weakness, and rerun the same versioned scenarios; separately obtain physical-device evidence.

@@ -94,6 +94,14 @@ export async function signOutUser(): Promise<boolean> {
 }
 export function expireUser() {removeToken(); invalidate({phase: 'signed_out'})}
 
+/** Called only after the authenticated server confirms account erasure. */
+export function completeAccountDeletion() {
+  for (const key of ['harbor-session', 'harbor-sessions']) {
+    try {localStorage.removeItem(getUserSessionKey(key))} catch { /* Identity still clears if device storage is unavailable. */ }
+  }
+  removeToken(); invalidate({phase: 'signed_out'})
+}
+
 /** User bearer tokens are explicit and never substituted into the administrator plane. */
 export async function userApi<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   if (path.startsWith('/admin')) throw new Error('Use the separate administrator authentication plane.')

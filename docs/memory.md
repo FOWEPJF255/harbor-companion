@@ -21,7 +21,7 @@ stateDiagram-v2
 - The ordinary input message and final response are still dialogue history. “Not persisted before approval” refers to dedicated structured memory, not a promise to erase an ordinary chat message. Clearing/deleting history is a separate action.
 - Approval saves the exact reviewed suggestion; a manually submitted memory form is itself an explicit save action.
 - Corrections and deletions affect all conversations sharing that approved-memory space. Default isolated sessions cannot address these memory IDs.
-- Pending suggestions cannot be corrected into approved memories through the correction endpoint; approve first or submit an explicit new memory.
+- Editing a pending suggestion becomes an approved memory only with the explicit `approve_pending: true` confirmation; otherwise the correction endpoint refuses the transition. The UI labels this as editing and approving. Approved-memory corrections preserve the existing confirmation boundary.
 - Clearing history keeps approved memories and removes messages, turns, human review notes, and this session's pending suggestions.
 - Deleting a session removes its dialogue and pending suggestions. Approved memories remain only if another retained session shares their space. Deleting the last session removes the orphaned space and its memories.
 - Deleting a memory stops future structured retrieval. Earlier dialogue and historical traces may mention the old fact; they are not rewritten. Clear/delete those conversations separately when required.

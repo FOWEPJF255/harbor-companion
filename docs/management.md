@@ -42,7 +42,7 @@ Clearing conversation history also clears its human reviews, since review notes 
 - In accounts mode, administrators cannot read conversations or annotate them until the session owner explicitly grants reviewer access. Withdrawal hides further raw reads and deletes existing review notes. Local-demo records remain the single owner's legacy demonstration surface and are not automatically assigned to accounts.
 - The console first lists summaries. Opening details is an explicit action following the privacy notice.
 - API responses have `Cache-Control: no-store`. The PWA service worker does not cache API calls, conversations, or tokens.
-- There is no bulk private-data export or generic SQL/browser/shell tool.
+- The management plane has no bulk private-data export or generic SQL/browser/shell tool. The separate owner [account-data controls](account-data-lifecycle.md) export only the reauthenticated user's data.
 - Logout revokes the current token in the running process. Restart invalidates all existing administrator tokens.
 - Login is rate-limited per socket address. Behind a proxy this can group users together; it is a prototype limit, not a distributed authentication service.
 - The built-in console has a single administrator, no recovery email, RBAC, MFA, or shared-team invitation workflow. Preserve the local DB privately; do not manually clear credentials just to bypass access.

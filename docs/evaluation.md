@@ -4,7 +4,7 @@ This document separates **application-contract checks** from **real-model dialog
 
 ## Latest observed run
 
-On 2026-10-09, the expanded evaluator produced **50 / 50 passing synthetic application-contract fixtures** with **zero live-model calls**. The final Python suite produced **140 passing tests**, including the original 10 boundary tests, expanded acceptance, management, memory-lifecycle, upstream failure, and DataAgent suites. The results are local execution observations; rerun the commands below against a later checkout rather than assuming they stay unchanged.
+On 2026-10-09, the v0.5 evaluator produced **50 / 50 passing synthetic application-contract fixtures** with **zero live-model calls**. The final Python suite produced **321 passing tests** in **66.46 seconds**, covering the original fixtures plus management, accounts, operations, lifecycle/races, backup and provider protocol checks. The earlier v0.3 total of 140 and v0.4 total of 266 are historical. The results are local execution observations; rerun the commands below against a later checkout rather than assuming they stay unchanged. See [v0.5 full fixture evidence](evidence/framework-v0.5-2026-10-09.json).
 
 The dependency emits a Starlette/httpx TestClient deprecation warning. It did not cause a failure in this run. This warning concerns the local test transport; it is not a measured failure in the phone application or a result about dialogue quality.
 

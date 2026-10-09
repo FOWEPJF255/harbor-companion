@@ -35,7 +35,7 @@ There is no automatic fallback from a real provider to mock. A failed turn does 
 
 ## Memory
 
-History and unapproved suggestions remain session-private. Approved memory belongs to a space that is isolated by default and can be explicitly shared when creating a new conversation. It is not a multi-device account-memory system.
+History and unapproved suggestions remain session-private. Approved memory belongs to a space that is isolated by default and can be explicitly shared when creating a new conversation. Account mode adds server-side ownership and session restoration after login from another device; it does not automatically share facts across every conversation in the account.
 
 `propose_memory` returns a transient proposal with a 30-minute process-local lifetime. Only explicit approval or a direct user-written save makes it durable and retrievable. User corrections increment a revision. Removing a memory does not erase earlier chat mentions. Deleting a session clears its dialogue; approved memory survives only while another retained session shares its space. See [memory lifecycle](memory.md).
 
@@ -76,4 +76,8 @@ There are no filesystem, browser, social-account, payment, or messaging tools. M
 - UI modes and persona prompts cannot prove relational safety or semantic correctness.
 - The single-process SQLite/async-lock design is not a distributed architecture.
 - Context is truncated, not summarized; information beyond the bounded history can be lost.
-- Streaming/SSE, forceful tool cancellation, production user authentication/hosting, and semantic conflict merging remain outside the current offline milestone.
+- Streaming/SSE, forceful tool cancellation, organization SSO/distributed authentication, production hosting, and semantic conflict merging remain outside this controlled milestone.
+
+## Owner lifecycle extension
+
+Account data routes require the current user's bearer token plus current-password reauthentication. Export reads one bounded SQLite snapshot; account erasure removes attributable database and process data atomically where applicable. Late model results recheck owner/session before commit and cannot recreate erased records. The separate administrator remains subject to the owner's review permission. See [data lifecycle](account-data-lifecycle.md) and [disposable backup recovery](data-backup-recovery.md) for exact inventories, retention triggers and retained-copy limitations.

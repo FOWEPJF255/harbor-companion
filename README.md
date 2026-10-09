@@ -2,7 +2,7 @@
 
 An inspectable character companion prototype: persona, multi-turn context, consent-based memory, bounded tool use, and evidence you can replay.
 
-**Stage: controlled APP and account foundation, v0.4.** Official DeepSeek integration has been exercised with eight synthetic scenarios and ten real model requests. Human companionship-quality scoring, public deployment and physical-device acceptance remain pending. Default template configuration still uses deterministic mock replies for infrastructure checks. See [current progress](docs/CURRENT.md), [market requirements](docs/market-requirements-2026-10-09.md), and [production readiness](docs/enterprise-readiness.md) for implemented controls and remaining gates.
+**Stage: controlled APP with owner data lifecycle, v0.5.** Account mode adds reauthenticated scoped export, explicit account erasure, security-record retention and disposable backup recovery. Official DeepSeek integration has previously been exercised with eight synthetic scenarios and ten real model requests; this lifecycle iteration makes no new model calls. Human companionship-quality scoring, public deployment and physical-device acceptance remain pending. Default template configuration still uses deterministic mock replies for infrastructure checks. See [current progress](docs/CURRENT.md), [market requirements](docs/market-requirements-2026-10-09.md), and [production readiness](docs/enterprise-readiness.md) for implemented controls and remaining gates.
 
 ## Product
 
@@ -23,6 +23,8 @@ The current prototype implements:
 - Separate user/administrator authentication, owner-bound sessions and memory spaces, logout/expiry/revocation, and default-disabled registration.
 - A management console for characters and reviews; account conversations require explicit user permission before reviewer inspection.
 - Per-actor request budgets, bounded concurrency/session admission, private redacted audit and database readiness checks.
+- Owner-only complete-row JSON export within an explicit 16 MiB limit, password reauthentication and confirmed account erasure; [inventory and limits](docs/account-data-lifecycle.md).
+- Startup/hourly-on-request security-record cleanup and a synthetic consistent-backup/recovery drill with restored-login invalidation; [recovery guide](docs/data-backup-recovery.md).
 - Character snapshots: edited prompts apply to new conversations without silently changing existing ones.
 - Public-assets-only PWA support and an Android packaging workflow; no offline chat simulation or API cache.
 - Chinese/English user and administration interfaces and language-aware responses. Authored character descriptions and transcripts retain their original language.

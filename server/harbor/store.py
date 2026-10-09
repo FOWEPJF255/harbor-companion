@@ -2,6 +2,7 @@ import json
 import hashlib
 import sqlite3
 import statistics
+import re
 import time
 from threading import RLock
 import uuid
@@ -23,6 +24,8 @@ class Store:
         # Unapproved proposals are process-local, expire, and are never stored in SQLite.
         self._pending = {}
         self._pending_lock = RLock()
+        self._maintenance_lock = RLock()
+        self._last_maintenance = float("-inf")
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             UserAuth.ensure_schema(db)
@@ -88,6 +91,14 @@ class Store:
             db.execute("DELETE FROM memories")
             if "request_hash" not in {row["name"] for row in db.execute("PRAGMA table_info(turns)")}:
                 db.execute("ALTER TABLE turns ADD COLUMN request_hash TEXT")
+            if "subject_user_id" not in {row["name"] for row in db.execute("PRAGMA table_info(audit_events)")}:
+                db.execute("ALTER TABLE audit_events ADD COLUMN subject_user_id TEXT REFERENCES users(id) ON DELETE CASCADE")
+                # Attribute only existing, provably owned records; never guess orphaned legacy owners.
+                db.execute("""UPDATE audit_events SET subject_user_id=COALESCE(
+                    (SELECT u.id FROM users u WHERE u.id=audit_events.actor_id),
+                    (SELECT u.id FROM users u WHERE u.id=audit_events.target_id),
+                    (SELECT s.owner_user_id FROM sessions s WHERE s.id=audit_events.target_id))""")
+            db.execute("CREATE INDEX IF NOT EXISTS audit_subject ON audit_events(subject_user_id)")
 
     @contextmanager
     def connect(self):
@@ -106,6 +117,9 @@ class Store:
             raise ValueError("Character is not available")
         sid = str(uuid.uuid4())
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if owner_user_id is not None and not db.execute("SELECT id FROM users WHERE id=? AND active=1", (owner_user_id,)).fetchone():
+                raise ValueError("User account is not available")
             if memory_from_session_id:
                 source = db.execute("""SELECT s.memory_scope,s.owner_user_id,p.owner_user_id AS space_owner
                     FROM sessions s JOIN memory_spaces p ON p.id=s.memory_scope WHERE s.id=?""", (memory_from_session_id,)).fetchone()
@@ -162,8 +176,21 @@ class Store:
         if set(metadata) - allowed:
             raise ValueError("Audit metadata must not include dialogue or credentials")
         with self.connect() as db:
-            db.execute("INSERT INTO audit_events VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()), actor, action, target,
-                       json.dumps(metadata, ensure_ascii=False), now()))
+            db.execute("BEGIN IMMEDIATE")
+            actor_user = db.execute("SELECT id FROM users WHERE id=? AND active=1", (actor,)).fetchone()
+            if re.fullmatch(r"[0-9a-f]{32}", actor or "") and not actor_user:
+                # An asynchronous operation belonging to an erased account cannot recreate its audit.
+                return
+            subject = actor_user[0] if actor_user else None
+            if subject is None and target:
+                subject_row = db.execute("""SELECT id FROM users WHERE id=? UNION ALL
+                    SELECT owner_user_id FROM sessions WHERE id=? UNION ALL
+                    SELECT s.owner_user_id FROM turns t JOIN sessions s ON s.id=t.session_id WHERE t.id=? UNION ALL
+                    SELECT p.owner_user_id FROM approved_memories m JOIN memory_spaces p ON p.id=m.space_id WHERE m.id=?
+                    LIMIT 1""", (target, target, target, target)).fetchone()
+                subject = subject_row[0] if subject_row else None
+            db.execute("INSERT INTO audit_events(id,actor_id,action,target_id,metadata,created,subject_user_id) VALUES(?,?,?,?,?,?,?)",
+                       (str(uuid.uuid4()), actor, action, target, json.dumps(metadata, ensure_ascii=False), now(), subject))
 
     def audit_events(self, limit=100):
         with self.connect() as db:
@@ -175,6 +202,22 @@ class Store:
         threshold = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
         with self.connect() as db:
             return db.execute("DELETE FROM audit_events WHERE created < ?", (threshold,)).rowcount
+
+    def maintenance(self, retention_days, *, force=False):
+        """Startup and hourly-on-request cleanup; idle servers do not run a background sweeper."""
+        from datetime import timedelta
+        with self._maintenance_lock:
+            stamp = time.monotonic()
+            if not force and stamp - self._last_maintenance < 3600:
+                return None
+            threshold = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+            with self.connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                tokens = db.execute("DELETE FROM user_tokens WHERE expires_at<=? OR revoked_at IS NOT NULL", (int(time.time()),)).rowcount
+                audit = db.execute("DELETE FROM audit_events WHERE created<?", (threshold,)).rowcount
+            self._last_maintenance = stamp
+            self._expire_proposals()
+            return {"expired_or_revoked_tokens": tokens, "expired_audit_events": audit}
 
     def memories(self, sid, status=None):
         self._expire_proposals()
@@ -211,6 +254,8 @@ class Store:
         mid = str(uuid.uuid4())
         if status == "pending":
             with self._pending_lock:
+                if not self.session(sid):
+                    raise ValueError("Session not found")
                 self._pending[mid] = {"id": mid, "session_id": sid, "content": content, "status": "pending",
                                       "created": now(), "expires_at": time.monotonic() + 1800, "request_id": None}
             return mid
@@ -290,6 +335,10 @@ class Store:
         proposals = result.pop("proposals", [])
         # Completed dialogue is history; dedicated proposals and their contents are not durable memory.
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            session = db.execute("SELECT owner_user_id FROM sessions WHERE id=?", (sid,)).fetchone()
+            if not session or (session[0] is not None and not db.execute("SELECT id FROM users WHERE id=? AND active=1", (session[0],)).fetchone()):
+                raise ValueError("Session not found")
             for role, content in [("user", user), ("assistant", result["reply"])]:
                 db.execute("INSERT INTO messages(session_id,role,content,emotion,created) VALUES(?,?,?,?,?)",
                            (sid, role, content, result["emotion"], now()))

@@ -86,6 +86,10 @@ The backend owns permission and account-ownership enforcement; the browser check
 
 ## Verification scope
 
+The v0.5 My space extension adds an authenticated account-data panel for password-reauthenticated export and explicit permanent deletion. It is absent in local-demo mode. Export contains complete owned rows within a 16 MiB budget; deletion requires the exact typed `DELETE`. Incorrect current passwords preserve login, while expired/revoked tokens clear identity. Successful deletion clears the current account's saved session handles, token and private UI and keeps a translated completion notice. See [full inventory and limits](account-data-lifecycle.md).
+
+The v0.5 frontend rebuild passed. Lifecycle API and race checks use synthetic data; browser automation remained unavailable, so account-data interaction, translated layout and native download behavior have not been visually accepted.
+
 `npm run build` completed on this iteration: TypeScript validation and the Vite production bundle succeeded. This is a build result, not physical-device operation or semantic conversation evaluation.
 
 The isolated loopback service at `http://127.0.0.1:8766` used mock mode, two provisioned synthetic users, disabled registration, and disposable synthetic data. Ten HTTP assertion groups passed: public account-mode disclosure, no-token denial, disabled registration, both users' login and `me`, default-isolated versus explicit shared memory, cross-owner read/share/permission denial, grant/withdraw review permission, an English mock turn, 20-item pagination, and revoked-token denial after logout. The record is `reports/user-accounts-http-2026-10-09.json`; it contains no passwords or tokens. These requests verify the live API contract, not React interactions.

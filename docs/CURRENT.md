@@ -6,9 +6,17 @@ The latest user direction expands the MVP into market-informed operational engin
 
 ## Current milestone
 
+**v0.5 owner data lifecycle.** Account mode now provides current-password reauthentication, complete-row JSON export within an explicit 16 MiB limit, exact-confirmation account erasure, attributable-audit cleanup, late-run guards, startup/hourly-on-request security-record retention, and a consistent synthetic backup/recovery drill. See [lifecycle inventory](account-data-lifecycle.md), [recovery limits](data-backup-recovery.md), and the [v0.5 iteration record](iteration-2026-10-09-v0.5.md).
+
+Final local regression: **321 passed**, one existing Starlette/httpx warning, **66.46 seconds**. Independent synthetic evaluator **50/50**, zero model calls; frontend production build passed. The actual synthetic recovery drill passed **10/10 checks**, including rejection of old restored user tokens. This iteration made no new model requests and did not erase an actual owner's account. Current browser/phone UI acceptance remains pending because browser automation was unavailable.
+
+The v0.5 local backend is running at http://127.0.0.1:8765/ in the `local_demo` profile with the existing DeepSeek configuration; status, database readiness and HTTP 200 for the rebuilt frontend were checked. Account features require the owner's deliberately provisioned credentials and `accounts` profile. Packaging status is recorded separately in [app delivery](app-delivery.md); a newly compiled APK is not a physical-phone or public-service acceptance result.
+
+### Historical v0.4 checkpoint
+
 **v0.4 account/operations foundation and initial actual DeepSeek execution evidence.** The owner identified the API as official DeepSeek; its documented base URL and `deepseek-flash` are now configured locally. Eight authored synthetic scenarios made ten real requests, with no execution failures and 9,544 provider-reported total tokens. Human scores remain pending. There is no public deployment, HR message, physical-phone acceptance, store release, commercial result or customer-count claim.
 
-### New implemented increment
+### v0.4 implemented increment
 
 - Optional user accounts, hashed opaque tokens, password hashing, expiry/revocation, default-disabled registration; user and administrator credentials are separate.
 - Owner checks across sessions, messages, proposals, approved-memory sharing and deletion. Legacy anonymous records are not automatically assigned to users. Remote hosts require accounts mode.
@@ -42,7 +50,7 @@ Recorded commands/results and source links: [evidence](evidence.md), [evaluation
 
 ## Next highest priorities
 
-1. Complete the remaining P0 owner data lifecycle: complete scoped export/account deletion, retention policies and a disposable backup/restore drill. Add response feedback with authorized turn references, triage and regression linkage as the next bounded product loop.
+1. Add response feedback with authorized turn references, permissioned triage and regression linkage as the next bounded product loop. The v0.5 owner lifecycle is implemented; larger exports, password recovery, backup TTL and deletion-ledger replay remain explicit readiness gaps.
 2. Human-review the actual DeepSeek transcripts and expand the existing quality outlines, including gentle-romance consistency, memory conflict and adversarial cases. Fix a measured weakness and rerun the versioned samples; do not convert execution completion into a quality score.
 3. Recover UI verification and review the current Android build on a physical phone using a deliberately configured HTTPS account backend. Validate keyboard, rotation, safe areas, reconnect, access code and account switching. No deployment is authorized by this file.
 
